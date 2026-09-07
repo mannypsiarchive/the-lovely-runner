@@ -19,6 +19,7 @@ const state = {
   gisReady: false,
   accessToken: null,
   clipFiles: [],
+  clipRows: [],
 };
 
 function setStatus(message, kind = "") {
@@ -114,12 +115,12 @@ async function loadTracker() {
 
     $("trackerCard").classList.remove("hidden");
     $("clipLogCard").classList.remove("hidden");
-    $("writeTestButton").disabled = false;
+    if (state.clipFiles.length) updateClipPreview();
     setStatus("Connected", "connected");
   } catch (error) {
     setStatus("Could not read this sheet: " + error.message, "error");
     $("trackerCard").classList.add("hidden");
-    $("writeTestButton").disabled = true;
+    $("clipLogCard").classList.add("hidden");
   }
 }
 
@@ -139,14 +140,60 @@ function sourceFileName(fileName) {
   return stem;
 }
 
-function updateClipPreview() {
+function getClipRows() {
+  const startValue = $("arcStart").value.trim();
+  const start = Number(startValue);
+  return state.clipFiles.filter((file) => classifyClip(file.name)).map((file, index) => {
+    const type = classifyClip(file.name);
+    return {
+      file,
+      row: start + index + 1,
+      sourceName: sourceFileName(file.name),
+      type,
+    };
+  });
+}
+
+async function readSourceLinks(rows) {
+  if (!state.spreadsheetId || !rows.length) return rows.map((row) => ({ ...row, sourceLink: "" }));
+  const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+    spreadsheetId: state.spreadsheetId,
+    ranges: rows.map((item) => quoteSheetName("TAPE LOG") + "!O" + item.row),
+  });
+  const valueRanges = response.result.valueRanges || [];
+  return rows.map((row, index) => ({
+    ...row,
+    sourceLink: valueRanges[index]?.values?.[0]?.[0] || "",
+  }));
+}
+
+function vendorFromSource(sourceLink, fileName) {
+  if (/gettyimages|Getty Images/i.test(sourceLink)) return "Getty Images";
+  if (/gettyimages/i.test(fileName)) return "Getty Images";
+  return "";
+}
+
+function descriptionFromSourceLink(sourceLink) {
+  if (!sourceLink) return "";
+  try {
+    const url = new URL(sourceLink);
+    const match = url.pathname.match(/\/detail-[^/]+\/([^/]+)\/[^/]+\/?$/i);
+    if (!match) return "";
+    const words = decodeURIComponent(match[1]).replace(/[-_]+/g, " ").trim();
+    return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+async function updateClipPreview() {
   const startValue = $("arcStart").value.trim();
   const start = Number(startValue);
   const preview = $("clipPreview");
   const files = state.clipFiles;
 
   if (!files.length) {
-    $("clipSelectionStatus").textContent = "Choose a folder containing the test clip.";
+    $("clipSelectionStatus").textContent = "Choose a source folder containing one or more clips.";
     preview.classList.add("hidden");
     $("logClipButton").disabled = true;
     return;
@@ -158,49 +205,49 @@ function updateClipPreview() {
     return;
   }
 
-  const rows = files.map((file, index) => {
-    const type = classifyClip(file.name);
-    return {
-      file,
-      row: start + index + 1,
-      sourceName: sourceFileName(file.name),
-      type,
-    };
-  });
-  const unsupported = rows.filter((item) => !item.type).length;
-  const supported = rows.filter((item) => item.type);
-  state.clipFiles = supported.map((item) => item.file);
-  const adjustedRows = supported.map((file, index) => ({
+  const allRows = files.map((file, index) => ({
     file,
     row: start + index + 1,
     sourceName: sourceFileName(file.name),
     type: classifyClip(file.name),
   }));
+  const unsupported = allRows.filter((item) => !item.type).length;
+  const rows = allRows.filter((item) => item.type);
+  state.clipFiles = rows.map((item) => item.file);
+  const adjustedRows = await readSourceLinks(rows);
+  state.clipRows = adjustedRows;
 
   $("clipSelectionStatus").textContent =
-    supported.length + " file" + (supported.length === 1 ? "" : "s") + " ready. " +
+    adjustedRows.length + " file" + (adjustedRows.length === 1 ? "" : "s") + " ready. " +
     (unsupported ? unsupported + " unsupported file" + (unsupported === 1 ? " was" : "s were") + " ignored." : "");
-  preview.innerHTML = adjustedRows.map((item) =>
-    "<div><strong>Row " + item.row + "</strong> · D: " + escapeHtml(item.sourceName) + " · M: " + item.type +
-    " <span>(" + escapeHtml(item.file.name) + ")</span></div>"
-  ).join("");
+  preview.innerHTML = adjustedRows.map((item) => {
+    const vendor = vendorFromSource(item.sourceLink, item.file.name);
+    const description = descriptionFromSourceLink(item.sourceLink);
+    return "<div><strong>Row " + item.row + "</strong> · Source File Name (D): <strong>" + escapeHtml(item.sourceName) +
+    "</strong> · Still/Footage (M): <strong>" + escapeHtml(item.type) +
+    "</strong> · Vendor/Source (F): <strong>" + escapeHtml(vendor || "—") + "</strong> · Description (J): <strong>" +
+    escapeHtml(description || "—") + "</strong> <span>(original file: " + escapeHtml(item.file.name) + ")</span></div>";
+  }).join("");
   preview.classList.toggle("hidden", !adjustedRows.length);
   $("logClipButton").disabled = !adjustedRows.length;
 }
 
 async function logTestClips() {
   const startValue = $("arcStart").value.trim();
-  const start = Number(startValue);
-  if (!/^\d+$/.test(startValue) || start < 0 || !state.clipFiles.length) {
+  if (!/^\d+$/.test(startValue) || Number(startValue) < 0 || !state.clipFiles.length) {
     $("clipWriteStatus").textContent = "Choose a supported clip folder and enter an ARC number.";
     return;
   }
 
-  const data = state.clipFiles.map((file, index) => {
-    const row = start + index + 1;
+  const rows = state.clipRows?.length ? state.clipRows : getClipRows();
+  const data = rows.map((item) => {
+    const vendor = vendorFromSource(item.sourceLink, item.file.name);
+    const description = descriptionFromSourceLink(item.sourceLink);
     return [
-      { range: quoteSheetName("TAPE LOG") + "!D" + row, values: [[sourceFileName(file.name)]] },
-      { range: quoteSheetName("TAPE LOG") + "!M" + row, values: [[classifyClip(file.name)]] },
+      { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
+      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
+      ...(vendor ? [{ range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[vendor]] }] : []),
+      ...(description ? [{ range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[description]] }] : []),
     ];
   }).flat();
 
@@ -214,7 +261,7 @@ async function logTestClips() {
         data,
       },
     });
-    $("clipWriteStatus").textContent = "Success. Wrote source filename(s) to column D and F/S to column M.";
+    $("clipWriteStatus").textContent = "Success. Wrote source filename(s), footage/still type, vendor, and link description to TAPE LOG.";
   } catch (error) {
     $("clipWriteStatus").textContent = "Write failed: " + error.message;
     $("logClipButton").disabled = false;
@@ -277,12 +324,12 @@ window.addEventListener("load", () => {
       setStatus(error.message, "error");
     }
   });
-  $("writeTestButton").addEventListener("click", writeTestValue);
   $("signOutButton").addEventListener("click", disconnect);
   $("clipFolder").addEventListener("change", (event) => {
     state.clipFiles = Array.from(event.target.files || []);
     updateClipPreview();
   });
+  $("arcStart").value = "";
   $("arcStart").addEventListener("input", updateClipPreview);
   $("logClipButton").addEventListener("click", logTestClips);
   initializeGoogle();
