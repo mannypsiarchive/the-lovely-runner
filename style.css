@@ -37,6 +37,12 @@ button { cursor: pointer; }
   margin-bottom: 24px;
 }
 
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .eyebrow {
   font-size: 12px;
   font-weight: 700;
@@ -76,6 +82,100 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 22px;
   box-shadow: var(--shadow);
+}
+
+.home-card { padding: 30px; }
+
+.home-intro {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.home-intro h2 {
+  margin-top: 7px;
+  font-size: clamp(24px, 4vw, 32px);
+  letter-spacing: -0.035em;
+}
+
+.home-intro p {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 22px;
+}
+
+.tool-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 14px;
+  min-height: 132px;
+  padding: 19px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+}
+
+button.tool-card { cursor: pointer; font: inherit; }
+
+.active-tool {
+  border-color: rgba(95, 92, 230, .28);
+  box-shadow: 0 9px 24px rgba(95, 92, 230, .08);
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+
+.active-tool:hover {
+  border-color: rgba(95, 92, 230, .65);
+  box-shadow: 0 13px 28px rgba(95, 92, 230, .14);
+  transform: translateY(-2px);
+}
+
+.planned-tool { background: #fafbfc; color: #606978; }
+
+.tool-number {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.tool-copy { display: grid; gap: 7px; }
+
+.tool-copy strong {
+  color: #202738;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.tool-copy span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tool-arrow {
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.tool-status {
+  align-self: end;
+  grid-column: 2 / 4;
+  color: #858c98 !important;
+  font-size: 11px !important;
+  font-weight: 750;
+  letter-spacing: .02em;
+  text-transform: uppercase;
 }
 
 .setup-card, .review-card, .complete-card { padding: 28px; }
@@ -233,5 +333,7 @@ input:focus, select:focus {
 @media (max-width: 720px) {
   .app-shell { width: min(100% - 20px, 920px); padding-top: 24px; }
   .hero { align-items: flex-start; }
+  .hero-actions { align-items: flex-end; flex-direction: column-reverse; }
+  .tool-grid { grid-template-columns: 1fr; }
   .review-actions .button { flex: 1 1 200px; }
 }

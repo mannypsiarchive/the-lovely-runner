@@ -10,14 +10,108 @@
   <main class="app-shell">
     <header class="hero">
       <div>
-        <div class="eyebrow">EDL WORKFLOW TOOL</div>
-        <h1>The Lovely Runner</h1>
-        <p>Clean, classify, and prepare EDL material.</p>
+        <div class="eyebrow" id="appEyebrow">ARCHIVAL WORKFLOW SUITE</div>
+        <h1 id="appTitle">The Lovely Runner</h1>
+        <p id="appSubtitle">Choose a tool to get started.</p>
       </div>
-      <div class="status-pill" id="statusPill">Ready</div>
+      <div class="hero-actions">
+        <button class="button ghost back-home hidden" id="homeButton">← All tools</button>
+        <div class="status-pill" id="statusPill">Ready</div>
+      </div>
     </header>
 
-    <section class="card setup-card" id="setupCard">
+    <section class="card home-card" id="homeCard">
+      <div class="home-intro">
+        <div class="eyebrow">WORKSPACE</div>
+        <h2>What would you like to do?</h2>
+        <p>Lovely Runner brings the archival workflow tools together in one place.</p>
+      </div>
+
+      <div class="tool-grid">
+        <button class="tool-card active-tool" id="openArchivalLogging" type="button">
+          <span class="tool-number">01</span>
+          <span class="tool-copy">
+            <strong>Archival Logging Helper</strong>
+            <span>Log vendor assets, connect source information, and prepare files for renaming.</span>
+          </span>
+          <span class="tool-arrow">→</span>
+        </button>
+
+        <button class="tool-card active-tool" id="openEdlCleaner" type="button">
+          <span class="tool-number">02</span>
+          <span class="tool-copy">
+            <strong>EDL Cleaner</strong>
+            <span>Clean, classify, review, and export EDL material.</span>
+          </span>
+          <span class="tool-arrow">→</span>
+        </button>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">03</span>
+          <span class="tool-copy">
+            <strong>Archival Vendor Information</strong>
+            <span>Vendors, rates, contracts, contacts, rights, and usage restrictions.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">04</span>
+          <span class="tool-copy">
+            <strong>Cost Report and Legal Flag Generator</strong>
+            <span>Cost tracking and rights review from vendor and show information.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">05</span>
+          <span class="tool-copy">
+            <strong>Fair Use Log and Due Diligence Generator</strong>
+            <span>Build organized records for fair use and due diligence review.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">06</span>
+          <span class="tool-copy">
+            <strong>Textless Element Log Generator</strong>
+            <span>Identify and organize textless elements from a reference cut.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">07</span>
+          <span class="tool-copy">
+            <strong>Shot Sheet Data Generator</strong>
+            <span>Prepare shot-sheet information from archival and EDL data.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">08</span>
+          <span class="tool-copy">
+            <strong>Archival Deliverable Checklist Generator</strong>
+            <span>Track required files, links, credits, rights, and final deliverables.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+
+        <div class="tool-card planned-tool">
+          <span class="tool-number">09</span>
+          <span class="tool-copy">
+            <strong>Archival Budget Reconciliation</strong>
+            <span>Compare archival estimates, final costs, invoices, and show budgets.</span>
+          </span>
+          <span class="tool-status">In development</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card setup-card hidden" id="setupCard">
       <div class="field">
         <label for="edlFile">EDL</label>
         <input id="edlFile" type="file" accept=".edl,.txt">
@@ -26,17 +120,6 @@
       <div class="field">
         <label for="outputName">Output Name</label>
         <input id="outputName" type="text" value="EDL_Cleaned.xlsx" autocomplete="off">
-      </div>
-
-      <div class="field">
-        <label for="documentType">Type</label>
-        <select id="documentType">
-          <option>EDL Cleaner</option>
-          <option disabled>Textless Elements Log (coming soon)</option>
-          <option disabled>Graphics Log (coming soon)</option>
-          <option disabled>Third Party Log (coming soon)</option>
-          <option disabled>Archival EDL (coming soon)</option>
-        </select>
       </div>
 
       <div class="actions">
