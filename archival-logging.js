@@ -20,6 +20,7 @@ const state = {
   accessToken: null,
   clipFiles: [],
   clipRows: [],
+  sourceDirectoryHandle: null,
 };
 
 function setStatus(message, kind = "") {
@@ -139,6 +140,21 @@ function classifyClip(fileName) {
   if (videoExtensions.includes(extension)) return "F";
   if (imageExtensions.includes(extension)) return "S";
   return "";
+}
+
+async function collectSourceFiles(directoryHandle) {
+  const files = [];
+  async function walk(handle) {
+    for await (const entry of handle.values()) {
+      if (entry.kind === "file") {
+        files.push({ name: entry.name, handle: entry, parentHandle: handle });
+      } else if (entry.kind === "directory") {
+        await walk(entry);
+      }
+    }
+  }
+  await walk(directoryHandle);
+  return files;
 }
 
 function sourceFileName(fileName) {
@@ -302,9 +318,95 @@ async function logTestClips() {
       },
     });
     $("clipWriteStatus").textContent = "Success. Wrote source filename(s), footage/still type, vendor, and link description to TAPE LOG.";
+    $("renamePanel").classList.remove("hidden");
+    $("renameButton").disabled = false;
   } catch (error) {
     $("clipWriteStatus").textContent = "Write failed: " + error.message;
     $("logClipButton").disabled = false;
+  }
+}
+
+async function readFinalNames(rows) {
+  const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+    spreadsheetId: state.spreadsheetId,
+    ranges: rows.map((item) => quoteSheetName("TAPE LOG") + "!B" + item.row),
+  });
+  const valueRanges = response.result.valueRanges || [];
+  return rows.map((row, index) => ({
+    ...row,
+    finalName: valueRanges[index]?.values?.[0]?.[0]?.trim() || "",
+  }));
+}
+
+function sourceIdMatchesFile(sourceId, fileName) {
+  const escaped = String(sourceId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp("(^|[^A-Za-z0-9])" + escaped + "(?=$|[^A-Za-z0-9])", "i").test(fileName);
+}
+
+function finalFileName(value, originalName) {
+  const desired = String(value || "").trim();
+  if (!desired) return "";
+  if (/\.[A-Za-z0-9]{2,5}$/.test(desired)) return desired;
+  const extension = String(originalName).match(/\.[^.]+$/)?.[0] || "";
+  return desired + extension;
+}
+
+async function renameLoggedFiles() {
+  if (!state.sourceDirectoryHandle) {
+    $("renameStatus").textContent = "Choose the source folder using the folder button before renaming.";
+    return;
+  }
+  if (!window.confirm("Rename the matching files in the selected source folder using the names in Column B?")) {
+    return;
+  }
+  try {
+    $("renameButton").disabled = true;
+    $("renameStatus").textContent = "Reading final filenames from Column B…";
+    const rows = await readFinalNames(state.clipRows?.length ? state.clipRows : getClipRows());
+    const results = [];
+
+    for (const row of rows) {
+      if (!row.sourceName) {
+        results.push("Row " + row.row + ": missing source filename in D");
+        continue;
+      }
+      if (!row.finalName) {
+        results.push("Row " + row.row + ": missing final filename in B");
+        continue;
+      }
+      const matches = state.clipFiles.filter((file) => sourceIdMatchesFile(row.sourceName, file.name));
+      if (matches.length !== 1) {
+        results.push("Row " + row.row + ": found " + matches.length + " matching source files for " + row.sourceName);
+        continue;
+      }
+
+      const sourceFile = matches[0];
+      const newName = finalFileName(row.finalName, sourceFile.name);
+      if (!newName || newName === sourceFile.name) {
+        results.push("Row " + row.row + ": already has the requested filename");
+        continue;
+      }
+      try {
+        await sourceFile.parentHandle.getFileHandle(newName);
+        results.push("Row " + row.row + ": skipped because " + newName + " already exists");
+        continue;
+      } catch (error) {
+        // The destination does not exist, so it is safe to create it below.
+      }
+
+      const originalFile = await sourceFile.handle.getFile();
+      const newFileHandle = await sourceFile.parentHandle.getFileHandle(newName, { create: true });
+      const writable = await newFileHandle.createWritable();
+      await writable.write(originalFile);
+      await writable.close();
+      await sourceFile.parentHandle.removeEntry(sourceFile.name);
+      results.push("Row " + row.row + ": renamed to " + newName);
+    }
+
+    $("renameStatus").textContent = results.join(" · ");
+  } catch (error) {
+    $("renameStatus").textContent = "Rename failed: " + error.message;
+    $("renameButton").disabled = false;
   }
 }
 
@@ -365,12 +467,24 @@ window.addEventListener("load", () => {
     }
   });
   $("signOutButton").addEventListener("click", disconnect);
-  $("clipFolder").addEventListener("change", (event) => {
-    state.clipFiles = Array.from(event.target.files || []);
-    updateClipPreview();
+  $("chooseSourceButton").addEventListener("click", async () => {
+    if (!window.showDirectoryPicker) {
+      $("sourceFolderName").textContent = "Direct renaming requires Chrome or Edge.";
+      return;
+    }
+    try {
+      const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      state.sourceDirectoryHandle = directoryHandle;
+      state.clipFiles = await collectSourceFiles(directoryHandle);
+      $("sourceFolderName").textContent = directoryHandle.name + " selected · " + state.clipFiles.length + " file" + (state.clipFiles.length === 1 ? "" : "s") + " found.";
+      await updateClipPreview();
+    } catch (error) {
+      if (error.name !== "AbortError") $("sourceFolderName").textContent = "Could not read source folder: " + error.message;
+    }
   });
   $("arcStart").value = "";
   $("arcStart").addEventListener("input", updateClipPreview);
   $("logClipButton").addEventListener("click", logTestClips);
+  $("renameButton").addEventListener("click", renameLoggedFiles);
   initializeGoogle();
 });

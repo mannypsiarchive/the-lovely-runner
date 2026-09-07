@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
-        <h1>Archival Logging Helper <span class="version-tag">1.1</span></h1>
+        <h1>Archival Logging Helper <span class="version-tag">1.2</span></h1>
         <p>Connect a tracker, then log and rename a batch of archival files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
@@ -67,7 +67,8 @@
       <div class="logger-test-grid">
         <div class="field">
           <label for="clipFolder">Source Folder</label>
-          <input id="clipFolder" type="file" webkitdirectory directory multiple>
+          <button class="button secondary folder-button" id="chooseSourceButton" type="button">Choose Source Folder</button>
+          <div class="logger-status" id="sourceFolderName" aria-live="polite">No source folder selected.</div>
         </div>
         <div class="field">
           <label for="arcStart">ARC Number Start</label>
@@ -79,6 +80,14 @@
       <div class="clip-preview hidden" id="clipPreview"></div>
       <button class="button primary" id="logClipButton" disabled>Log Test Clip</button>
       <div class="logger-status" id="clipWriteStatus" aria-live="polite"></div>
+
+      <div class="rename-panel hidden" id="renamePanel">
+        <div class="eyebrow">STEP 04</div>
+        <h3>Rename logged files</h3>
+        <p>After logging succeeds, Lovely Runner will use Column D to find each source file and Column B to determine its new name.</p>
+        <button class="button primary" id="renameButton" disabled>Rename Files</button>
+        <div class="logger-status" id="renameStatus" aria-live="polite"></div>
+      </div>
     </section>
   </main>
 
