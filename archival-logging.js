@@ -46,7 +46,11 @@ function ensureCredentials() {
 }
 
 function initializeGoogle() {
-  if (!window.gapi || !window.google?.accounts?.oauth2) return;
+  if (state.tokenClient || state.gapiReady) return;
+  if (!window.gapi || !window.google?.accounts?.oauth2) {
+    setTimeout(initializeGoogle, 250);
+    return;
+  }
 
   gapi.load("client", async () => {
     try {
@@ -75,6 +79,11 @@ function maybeEnableConnection() {
 }
 
 function requestGoogleAccess() {
+  if (!state.tokenClient) {
+    setStatus("Google sign-in is still loading. Please try again in a moment.", "working");
+    return;
+  }
+
   state.tokenClient.callback = async (response) => {
     if (response.error) {
       setStatus("Google authorization failed: " + response.error, "error");
