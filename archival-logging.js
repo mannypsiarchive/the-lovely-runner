@@ -4,8 +4,8 @@
   Before using this page, add a Google OAuth web client ID and API key below.
   These are browser-safe identifiers. Never put a Google client secret here.
 */
-const GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_CLIENT_ID_HERE";
-const GOOGLE_API_KEY = "PASTE_GOOGLE_API_KEY_HERE";
+const GOOGLE_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
+const GOOGLE_API_KEY = "AIzaSyCh8ia27PwiWJkPCypoUyvj5TD8YJVjJSc";
 const SHEETS_DISCOVERY_DOC = "https://sheets.googleapis.com/$discovery/rest?version=v4";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
