@@ -78,6 +78,32 @@
         <div class="logger-status" id="writeStatus" aria-live="polite"></div>
       </div>
     </section>
+
+    <section class="card logger-card hidden" id="clipLogCard">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 03</div>
+          <h2>Test one archival clip</h2>
+          <p>Select a folder, enter the ARC number to start at, preview the rows, and write the source filename and footage/still value to <strong>TAPE LOG</strong>.</p>
+        </div>
+      </div>
+
+      <div class="logger-test-grid">
+        <div class="field">
+          <label for="clipFolder">Clip folder</label>
+          <input id="clipFolder" type="file" webkitdirectory directory multiple>
+        </div>
+        <div class="field">
+          <label for="arcStart">ARC Number Start</label>
+          <input id="arcStart" type="number" min="0" step="1" placeholder="2530" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="logger-status" id="clipSelectionStatus" aria-live="polite">Choose a folder containing the test clip.</div>
+      <div class="clip-preview hidden" id="clipPreview"></div>
+      <button class="button primary" id="logClipButton" disabled>Log Test Clip</button>
+      <div class="logger-status" id="clipWriteStatus" aria-live="polite"></div>
+    </section>
   </main>
 
   <script src="https://apis.google.com/js/api.js"></script>

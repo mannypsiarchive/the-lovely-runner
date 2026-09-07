@@ -18,6 +18,7 @@ const state = {
   gapiReady: false,
   gisReady: false,
   accessToken: null,
+  clipFiles: [],
 };
 
 function setStatus(message, kind = "") {
@@ -112,12 +113,111 @@ async function loadTracker() {
       .join("");
 
     $("trackerCard").classList.remove("hidden");
+    $("clipLogCard").classList.remove("hidden");
     $("writeTestButton").disabled = false;
     setStatus("Connected", "connected");
   } catch (error) {
     setStatus("Could not read this sheet: " + error.message, "error");
     $("trackerCard").classList.add("hidden");
     $("writeTestButton").disabled = true;
+  }
+}
+
+function classifyClip(fileName) {
+  const extension = String(fileName).split(".").pop().toLowerCase();
+  const videoExtensions = ["mov", "mp4", "mxf", "m4v", "avi", "mts", "m2ts", "wmv", "webm"];
+  const imageExtensions = ["jpg", "jpeg", "png", "tif", "tiff", "webp", "heic", "gif", "bmp"];
+  if (videoExtensions.includes(extension)) return "F";
+  if (imageExtensions.includes(extension)) return "S";
+  return "";
+}
+
+function sourceFileName(fileName) {
+  const stem = String(fileName).replace(/\.[^.]+$/, "");
+  const gettyMatch = stem.match(/^gettyimages-(.+?)-\d+_adpp$/i);
+  if (gettyMatch) return gettyMatch[1];
+  return stem;
+}
+
+function updateClipPreview() {
+  const startValue = $("arcStart").value.trim();
+  const start = Number(startValue);
+  const preview = $("clipPreview");
+  const files = state.clipFiles;
+
+  if (!files.length) {
+    $("clipSelectionStatus").textContent = "Choose a folder containing the test clip.";
+    preview.classList.add("hidden");
+    $("logClipButton").disabled = true;
+    return;
+  }
+  if (!/^\d+$/.test(startValue) || start < 0) {
+    $("clipSelectionStatus").textContent = "Enter the ARC number to start at.";
+    preview.classList.add("hidden");
+    $("logClipButton").disabled = true;
+    return;
+  }
+
+  const rows = files.map((file, index) => {
+    const type = classifyClip(file.name);
+    return {
+      file,
+      row: start + index + 1,
+      sourceName: sourceFileName(file.name),
+      type,
+    };
+  });
+  const unsupported = rows.filter((item) => !item.type).length;
+  const supported = rows.filter((item) => item.type);
+  state.clipFiles = supported.map((item) => item.file);
+  const adjustedRows = supported.map((file, index) => ({
+    file,
+    row: start + index + 1,
+    sourceName: sourceFileName(file.name),
+    type: classifyClip(file.name),
+  }));
+
+  $("clipSelectionStatus").textContent =
+    supported.length + " file" + (supported.length === 1 ? "" : "s") + " ready. " +
+    (unsupported ? unsupported + " unsupported file" + (unsupported === 1 ? " was" : "s were") + " ignored." : "");
+  preview.innerHTML = adjustedRows.map((item) =>
+    "<div><strong>Row " + item.row + "</strong> · D: " + escapeHtml(item.sourceName) + " · M: " + item.type +
+    " <span>(" + escapeHtml(item.file.name) + ")</span></div>"
+  ).join("");
+  preview.classList.toggle("hidden", !adjustedRows.length);
+  $("logClipButton").disabled = !adjustedRows.length;
+}
+
+async function logTestClips() {
+  const startValue = $("arcStart").value.trim();
+  const start = Number(startValue);
+  if (!/^\d+$/.test(startValue) || start < 0 || !state.clipFiles.length) {
+    $("clipWriteStatus").textContent = "Choose a supported clip folder and enter an ARC number.";
+    return;
+  }
+
+  const data = state.clipFiles.map((file, index) => {
+    const row = start + index + 1;
+    return [
+      { range: quoteSheetName("TAPE LOG") + "!D" + row, values: [[sourceFileName(file.name)]] },
+      { range: quoteSheetName("TAPE LOG") + "!M" + row, values: [[classifyClip(file.name)]] },
+    ];
+  }).flat();
+
+  try {
+    $("logClipButton").disabled = true;
+    $("clipWriteStatus").textContent = "Writing " + state.clipFiles.length + " test row" + (state.clipFiles.length === 1 ? "" : "s") + " to TAPE LOG…";
+    await gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: state.spreadsheetId,
+      resource: {
+        valueInputOption: "USER_ENTERED",
+        data,
+      },
+    });
+    $("clipWriteStatus").textContent = "Success. Wrote source filename(s) to column D and F/S to column M.";
+  } catch (error) {
+    $("clipWriteStatus").textContent = "Write failed: " + error.message;
+    $("logClipButton").disabled = false;
   }
 }
 
@@ -179,5 +279,11 @@ window.addEventListener("load", () => {
   });
   $("writeTestButton").addEventListener("click", writeTestValue);
   $("signOutButton").addEventListener("click", disconnect);
+  $("clipFolder").addEventListener("change", (event) => {
+    state.clipFiles = Array.from(event.target.files || []);
+    updateClipPreview();
+  });
+  $("arcStart").addEventListener("input", updateClipPreview);
+  $("logClipButton").addEventListener("click", logTestClips);
   initializeGoogle();
 });
