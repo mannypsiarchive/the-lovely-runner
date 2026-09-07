@@ -396,6 +396,16 @@ input[type="text"], input[type="file"], select {
   color: #17203a;
 }
 
+#arcStart,
+#arcStart:focus {
+  background: #ffffff;
+  color: #17203a;
+}
+
+#arcStart::placeholder {
+  color: #68718c;
+}
+
 input[type="file"] { padding-top: 12px; }
 
 input:focus, select:focus {

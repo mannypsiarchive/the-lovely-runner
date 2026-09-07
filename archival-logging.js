@@ -234,7 +234,8 @@ async function updateClipPreview() {
     return "<div><strong>Row " + item.row + "</strong> · Source File Name (D): <strong>" + escapeHtml(item.sourceName) +
     "</strong> · Still/Footage (M): <strong>" + escapeHtml(item.type) +
     "</strong> · Vendor/Source (F): <strong>" + escapeHtml(vendor || "—") + "</strong> · Description (J): <strong>" +
-    escapeHtml(description || "—") + "</strong> <span>(original file: " + escapeHtml(item.file.name) + ")</span></div>";
+    escapeHtml(description || "—") + "</strong> · Column O link: <strong>" + (item.sourceLink ? "found" : "not found") +
+    "</strong> <span>(original file: " + escapeHtml(item.file.name) + ")</span></div>";
   }).join("");
   preview.classList.toggle("hidden", !adjustedRows.length);
   $("logClipButton").disabled = !adjustedRows.length;
@@ -247,19 +248,21 @@ async function logTestClips() {
     return;
   }
 
-  const rows = state.clipRows?.length ? state.clipRows : getClipRows();
-  const data = rows.map((item) => {
-    const vendor = vendorFromSource(item.sourceLink, item.file.name);
-    const description = descriptionFromSourceLink(item.sourceLink);
-    return [
-      { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
-      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
-      ...(vendor ? [{ range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[vendor]] }] : []),
-      ...(description ? [{ range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[description]] }] : []),
-    ];
-  }).flat();
-
   try {
+    // Re-read Column O immediately before writing so a link added after the
+    // preview is still used for Vendor/Source and Description.
+    const rows = await readSourceLinks(getClipRows());
+    state.clipRows = rows;
+    const data = rows.map((item) => {
+      const vendor = vendorFromSource(item.sourceLink, item.file.name);
+      const description = descriptionFromSourceLink(item.sourceLink);
+      return [
+        { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
+        { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
+        ...(vendor ? [{ range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[vendor]] }] : []),
+        ...(description ? [{ range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[description]] }] : []),
+      ];
+    }).flat();
     $("logClipButton").disabled = true;
     $("clipWriteStatus").textContent = "Writing " + state.clipFiles.length + " test row" + (state.clipFiles.length === 1 ? "" : "s") + " to TAPE LOG…";
     await gapi.client.sheets.spreadsheets.values.batchUpdate({
