@@ -204,7 +204,9 @@ function descriptionFromSourceLink(sourceLink) {
   if (!sourceLink) return "";
   try {
     const url = new URL(sourceUrl(sourceLink));
-    const match = url.pathname.match(/\/detail-[^/]+\/([^/]+)\/[^/]+\/?$/i);
+    // Getty uses /detail/video/<description>/<asset-id> URLs.
+    // Keep support for the alternate detail-video form as well.
+    const match = url.pathname.match(/\/detail(?:\/[^/]+|-video)\/([^/]+)\/[^/]+\/?$/i);
     if (!match) return "";
     const words = decodeURIComponent(match[1]).replace(/[-_]+/g, " ").trim();
     return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
