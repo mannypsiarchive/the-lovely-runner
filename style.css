@@ -364,6 +364,21 @@ input[type="text"], input[type="file"], select {
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 
+/* Keep the Google Sheet URL readable against the dark site design. */
+#sheetUrl {
+  background: #ffffff;
+  color: #17203a;
+}
+
+#sheetUrl::placeholder {
+  color: #68718c;
+}
+
+#sheetUrl:focus {
+  background: #ffffff;
+  color: #17203a;
+}
+
 input[type="file"] { padding-top: 12px; }
 
 input:focus, select:focus {
