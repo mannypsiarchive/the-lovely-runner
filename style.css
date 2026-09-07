@@ -44,6 +44,19 @@ button { cursor: pointer; }
   padding: 0 4px;
 }
 
+.version-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 9px;
+  border: 1px solid rgba(161, 181, 234, .28);
+  border-radius: 999px;
+  color: #b9c7ff;
+  font-size: .3em;
+  font-weight: 800;
+  letter-spacing: .08em;
+  vertical-align: middle;
+}
+
 .hero-actions {
   display: flex;
   align-items: center;

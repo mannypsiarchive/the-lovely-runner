@@ -183,8 +183,10 @@ function vendorFromSource(sourceLink, fileName) {
 
 function sourceUrl(sourceLink) {
   const raw = String(sourceLink || "");
-  const match = raw.match(/https?:\/\/[^\s)]+/i);
-  return (match ? match[0] : raw).replace(/[>\]"']+$/, "");
+  // Capture the URL cleanly from plain text, Markdown links, or a
+  // HYPERLINK-style cell value without including brackets or punctuation.
+  const match = raw.match(/https?:\/\/[^\s\]\)"']+/i);
+  return match ? match[0] : "";
 }
 
 function assetIdFromSourceLink(sourceLink) {
