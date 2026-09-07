@@ -10,17 +10,14 @@
   <main class="app-shell">
     <header class="hero">
       <div>
-        <div class="eyebrow" id="appEyebrow">ARCHIVAL WORKFLOW SUITE</div>
-        <h1 id="appTitle">The Lovely Runner</h1>
-        <p id="appSubtitle">Choose a tool to get started.</p>
+        <div class="eyebrow">ARCHIVAL WORKFLOW SUITE</div>
+        <h1>The Lovely Runner</h1>
+        <p>Choose a tool to get started.</p>
       </div>
-      <div class="hero-actions">
-        <button class="button ghost back-home hidden" id="homeButton">← All tools</button>
-        <div class="status-pill" id="statusPill">Ready</div>
-      </div>
+      <div class="status-pill">Ready</div>
     </header>
 
-    <section class="card home-card" id="homeCard">
+    <section class="card home-card">
       <div class="home-intro">
         <div class="eyebrow">WORKSPACE</div>
         <h2>What would you like to do?</h2>
@@ -28,26 +25,23 @@
       </div>
 
       <div class="tool-grid">
-        <button class="tool-card active-tool" id="openArchivalLogging" type="button">
-          <span class="tool-number">01</span>
+        <a class="tool-card active-tool" href="archival-logging.html">
           <span class="tool-copy">
             <strong>Archival Logging Helper</strong>
             <span>Log vendor assets, connect source information, and prepare files for renaming.</span>
           </span>
           <span class="tool-arrow">→</span>
-        </button>
+        </a>
 
-        <button class="tool-card active-tool" id="openEdlCleaner" type="button">
-          <span class="tool-number">02</span>
+        <a class="tool-card active-tool" href="edl-cleaner.html">
           <span class="tool-copy">
             <strong>EDL Cleaner</strong>
             <span>Clean, classify, review, and export EDL material.</span>
           </span>
           <span class="tool-arrow">→</span>
-        </button>
+        </a>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">03</span>
           <span class="tool-copy">
             <strong>Archival Vendor Information</strong>
             <span>Vendors, rates, contracts, contacts, rights, and usage restrictions.</span>
@@ -56,7 +50,6 @@
         </div>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">04</span>
           <span class="tool-copy">
             <strong>Cost Report and Legal Flag Generator</strong>
             <span>Cost tracking and rights review from vendor and show information.</span>
@@ -65,7 +58,6 @@
         </div>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">05</span>
           <span class="tool-copy">
             <strong>Fair Use Log and Due Diligence Generator</strong>
             <span>Build organized records for fair use and due diligence review.</span>
@@ -74,7 +66,6 @@
         </div>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">06</span>
           <span class="tool-copy">
             <strong>Textless Element Log Generator</strong>
             <span>Identify and organize textless elements from a reference cut.</span>
@@ -83,7 +74,6 @@
         </div>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">07</span>
           <span class="tool-copy">
             <strong>Shot Sheet Data Generator</strong>
             <span>Prepare shot-sheet information from archival and EDL data.</span>
@@ -92,7 +82,6 @@
         </div>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">08</span>
           <span class="tool-copy">
             <strong>Archival Deliverable Checklist Generator</strong>
             <span>Track required files, links, credits, rights, and final deliverables.</span>
@@ -101,7 +90,6 @@
         </div>
 
         <div class="tool-card planned-tool">
-          <span class="tool-number">09</span>
           <span class="tool-copy">
             <strong>Archival Budget Reconciliation</strong>
             <span>Compare archival estimates, final costs, invoices, and show budgets.</span>
@@ -110,69 +98,6 @@
         </div>
       </div>
     </section>
-
-    <section class="card setup-card hidden" id="setupCard">
-      <div class="field">
-        <label for="edlFile">EDL</label>
-        <input id="edlFile" type="file" accept=".edl,.txt">
-      </div>
-
-      <div class="field">
-        <label for="outputName">Output Name</label>
-        <input id="outputName" type="text" value="EDL_Cleaned.xlsx" autocomplete="off">
-      </div>
-
-      <div class="actions">
-        <button class="button primary" id="createButton">Create Document</button>
-        <button class="button secondary" id="closeButton">Close</button>
-      </div>
-
-      <div class="progress" aria-live="polite">
-        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
-        <div class="progress-text" id="progressText">Ready</div>
-      </div>
-    </section>
-
-    <section class="card review-card hidden" id="reviewCard">
-      <div class="review-topline">
-        <div>
-          <div class="eyebrow">REVIEW</div>
-          <h2 id="reviewTitle">Unknown Material</h2>
-        </div>
-        <div class="review-count" id="reviewCount">0 / 0</div>
-      </div>
-
-      <div class="filename-box" id="reviewFilename"></div>
-      <div class="occurrence" id="occurrenceText"></div>
-
-      <div class="field">
-        <label for="reviewCategory">What is this material?</label>
-        <select id="reviewCategory"></select>
-      </div>
-
-      <div class="review-actions">
-        <button class="button secondary" id="backButton">Go Back to Previous Row</button>
-        <button class="button primary" id="assignButton">Assign to Rows</button>
-        <button class="button danger" id="deleteButton">Delete Rows</button>
-        <button class="button secondary" id="skipButton">Skip Rows</button>
-      </div>
-
-      <button class="button ghost wide" id="skipAllButton">Skip All Rows</button>
-
-      <div class="review-status" id="reviewStatus"></div>
-    </section>
-
-    <section class="card complete-card hidden" id="completeCard">
-      <div class="complete-mark">✓</div>
-      <div class="eyebrow">DOCUMENT CREATED</div>
-      <h2>Hwaiting!</h2>
-      <p id="completeSummary"></p>
-      <button class="button primary" id="startOverButton">Start Over</button>
-    </section>
   </main>
-
-  <!-- SheetJS runs in the browser. It does not receive the EDL contents over the network. -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js"></script>
 </body>
 </html>

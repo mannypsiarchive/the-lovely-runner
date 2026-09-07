@@ -157,6 +157,7 @@ h1 {
   background: rgba(21, 30, 59, .72);
   color: inherit;
   text-align: left;
+  text-decoration: none;
 }
 
 button.tool-card { cursor: pointer; font: inherit; }
@@ -257,6 +258,7 @@ input:focus, select:focus {
   border-radius: 13px;
   font-weight: 750;
   transition: transform .1s, box-shadow .15s, background .15s;
+  text-decoration: none;
 }
 
 .button:hover { transform: translateY(-1px); }

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EDL Cleaner · The Lovely Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">EDL WORKFLOW TOOL</div>
+        <h1>EDL Cleaner</h1>
+        <p>Clean, classify, and prepare EDL material.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="button ghost back-home" href="index.html">← All tools</a>
+        <div class="status-pill" id="statusPill">Ready</div>
+      </div>
+    </header>
+
+    <section class="card setup-card" id="setupCard">
+      <div class="field">
+        <label for="edlFile">EDL</label>
+        <input id="edlFile" type="file" accept=".edl,.txt">
+      </div>
+
+      <div class="field">
+        <label for="outputName">Output Name</label>
+        <input id="outputName" type="text" value="EDL_Cleaned.xlsx" autocomplete="off">
+      </div>
+
+      <div class="actions">
+        <button class="button primary" id="createButton">Create Document</button>
+        <button class="button secondary" id="closeButton">Close</button>
+      </div>
+
+      <div class="progress" aria-live="polite">
+        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-text" id="progressText">Ready</div>
+      </div>
+    </section>
+
+    <section class="card review-card hidden" id="reviewCard">
+      <div class="review-topline">
+        <div>
+          <div class="eyebrow">REVIEW</div>
+          <h2 id="reviewTitle">Unknown Material</h2>
+        </div>
+        <div class="review-count" id="reviewCount">0 / 0</div>
+      </div>
+
+      <div class="filename-box" id="reviewFilename"></div>
+      <div class="occurrence" id="occurrenceText"></div>
+
+      <div class="field">
+        <label for="reviewCategory">What is this material?</label>
+        <select id="reviewCategory"></select>
+      </div>
+
+      <div class="review-actions">
+        <button class="button secondary" id="backButton">Go Back to Previous Row</button>
+        <button class="button primary" id="assignButton">Assign to Rows</button>
+        <button class="button danger" id="deleteButton">Delete Rows</button>
+        <button class="button secondary" id="skipButton">Skip Rows</button>
+      </div>
+
+      <button class="button ghost wide" id="skipAllButton">Skip All Rows</button>
+      <div class="review-status" id="reviewStatus"></div>
+    </section>
+
+    <section class="card complete-card hidden" id="completeCard">
+      <div class="complete-mark">✓</div>
+      <div class="eyebrow">DOCUMENT CREATED</div>
+      <h2>Hwaiting!</h2>
+      <p id="completeSummary"></p>
+      <button class="button primary" id="startOverButton">Start Over</button>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

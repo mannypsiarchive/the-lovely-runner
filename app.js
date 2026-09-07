@@ -644,35 +644,6 @@ function finishAndDownload() {
   $("completeSummary").textContent = `The document was created as ${name}. ${s.original ?? 0} original events were read; ${s.audioRemoved ?? 0} non-archival audio rows, ${s.vRemoved ?? 0} unwanted V rows, and ${s.duplicateAudioRemoved ?? 0} duplicate archival audio rows were removed. ${classifiedCount} rows were classified during review, ${deletedCount} were deleted, and ${skippedCount} were skipped.`;
 }
 
-function showHome() {
-  $("homeCard").classList.remove("hidden");
-  $("setupCard").classList.add("hidden");
-  $("reviewCard").classList.add("hidden");
-  $("completeCard").classList.add("hidden");
-  $("homeButton").classList.add("hidden");
-  $("appEyebrow").textContent = "ARCHIVAL WORKFLOW SUITE";
-  $("appTitle").textContent = "The Lovely Runner";
-  $("appSubtitle").textContent = "Choose a tool to get started.";
-  setStatus("Ready", 0);
-}
-
-function showEdlCleaner() {
-  $("homeCard").classList.add("hidden");
-  $("setupCard").classList.remove("hidden");
-  $("reviewCard").classList.add("hidden");
-  $("completeCard").classList.add("hidden");
-  $("homeButton").classList.remove("hidden");
-  $("appEyebrow").textContent = "EDL WORKFLOW TOOL";
-  $("appTitle").textContent = "EDL Cleaner";
-  $("appSubtitle").textContent = "Clean, classify, and prepare EDL material.";
-  setStatus("Ready", 0);
-}
-
-function showArchivalLoggingStatus() {
-  setStatus("Next feature");
-  $("appSubtitle").textContent = "The Archival Logging Helper is the next Lovely Runner module to build.";
-}
-
 function startOver() {
   state.events = [];
   state.rows = [];
@@ -698,9 +669,6 @@ $("deleteButton").addEventListener("click", deleteRows);
 $("skipButton").addEventListener("click", skipRows);
 $("skipAllButton").addEventListener("click", skipAllRows);
 $("startOverButton").addEventListener("click", startOver);
-$("homeButton").addEventListener("click", showHome);
-$("openEdlCleaner").addEventListener("click", showEdlCleaner);
-$("openArchivalLogging").addEventListener("click", showArchivalLoggingStatus);
 $("closeButton").addEventListener("click", () => {
   window.close();
   setStatus("You can close this browser tab/window.");
