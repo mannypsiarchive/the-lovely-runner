@@ -118,10 +118,6 @@ async function loadTracker() {
       '<div><span>Spreadsheet</span><strong>' + escapeHtml(state.spreadsheetTitle) + '</strong></div>' +
       '<div><span>Tabs found</span><strong>' + state.tabs.length + '</strong></div>';
 
-    $("sheetTab").innerHTML = state.tabs
-      .map((tab) => '<option value="' + escapeAttribute(tab.title) + '">' + escapeHtml(tab.title) + "</option>")
-      .join("");
-
     $("trackerCard").classList.remove("hidden");
     $("clipLogCard").classList.remove("hidden");
     if (state.clipFiles.length) updateClipPreview();
