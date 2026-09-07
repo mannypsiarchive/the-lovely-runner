@@ -12,18 +12,76 @@
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
         <h1>Archival Logging Helper</h1>
-        <p>Connect a tracker, log a batch, and prepare files for final renaming.</p>
+        <p>Connect a tracker, then log and rename a batch of archival files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
     </header>
 
-    <section class="card complete-card">
-      <div class="complete-mark">✦</div>
-      <div class="eyebrow">NEXT MODULE</div>
-      <h2>Coming into focus.</h2>
-      <p>This is where the Google Sheet connection, vendor metadata, batch logging, and local file-renaming workflow will live.</p>
-      <a class="button secondary" href="index.html">Return to Lovely Runner</a>
+    <section class="card logger-card">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 01</div>
+          <h2>Connect your tracker</h2>
+          <p>Paste the Google Sheet link that contains the show’s archival log.</p>
+        </div>
+        <div class="connection-dot" id="connectionDot"></div>
+      </div>
+
+      <div class="field">
+        <label for="sheetUrl">Google Sheet URL</label>
+        <input id="sheetUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
+      </div>
+
+      <div class="logger-actions">
+        <button class="button primary" id="connectButton">Connect Google Sheet</button>
+        <button class="button secondary" id="signOutButton" disabled>Disconnect</button>
+      </div>
+
+      <div class="logger-status" id="loggerStatus" aria-live="polite">
+        Enter a sheet link, then connect your Google account.
+      </div>
+    </section>
+
+    <section class="card logger-card hidden" id="trackerCard">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 02</div>
+          <h2>Tracker connection</h2>
+          <p id="trackerSummary">Connected tracker details will appear here.</p>
+        </div>
+      </div>
+
+      <div class="tracker-details" id="trackerDetails"></div>
+
+      <div class="logger-test">
+        <div class="eyebrow">SAFE WRITE TEST</div>
+        <h3>Verify that Lovely Runner can write</h3>
+        <p>Choose a tab and an unused cell. The test writes only the value you provide.</p>
+
+        <div class="logger-test-grid">
+          <div class="field">
+            <label for="sheetTab">Tab</label>
+            <select id="sheetTab"></select>
+          </div>
+          <div class="field">
+            <label for="testCell">Cell or range</label>
+            <input id="testCell" type="text" value="Z1" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="testValue">Test value</label>
+          <input id="testValue" type="text" value="Lovely Runner connection test" autocomplete="off">
+        </div>
+
+        <button class="button primary" id="writeTestButton" disabled>Write Test Value</button>
+        <div class="logger-status" id="writeStatus" aria-live="polite"></div>
+      </div>
     </section>
   </main>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client"></script>
+  <script src="archival-logging.js"></script>
 </body>
 </html>
