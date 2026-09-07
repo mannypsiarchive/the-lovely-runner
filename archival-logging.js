@@ -114,9 +114,12 @@ async function loadTracker() {
     state.spreadsheetTitle = response.result.properties.title;
     state.tabs = response.result.sheets.map((sheet) => sheet.properties);
     $("trackerSummary").textContent = state.spreadsheetTitle + " is connected with read/write authorization.";
-    $("trackerDetails").innerHTML =
-      '<div><span>Spreadsheet</span><strong>' + escapeHtml(state.spreadsheetTitle) + '</strong></div>' +
-      '<div><span>Tabs found</span><strong>' + state.tabs.length + '</strong></div>';
+    const trackerDetails = $("trackerDetails");
+    if (trackerDetails) {
+      trackerDetails.innerHTML =
+        '<div><span>Spreadsheet</span><strong>' + escapeHtml(state.spreadsheetTitle) + '</strong></div>' +
+        '<div><span>Tabs found</span><strong>' + state.tabs.length + '</strong></div>';
+    }
 
     $("trackerCard").classList.remove("hidden");
     $("clipLogCard").classList.remove("hidden");
