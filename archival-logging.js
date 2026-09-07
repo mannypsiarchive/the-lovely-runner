@@ -181,10 +181,29 @@ function vendorFromSource(sourceLink, fileName) {
   return "";
 }
 
+function sourceUrl(sourceLink) {
+  const raw = String(sourceLink || "");
+  const match = raw.match(/https?:\/\/[^\s)]+/i);
+  return (match ? match[0] : raw).replace(/[>\]"']+$/, "");
+}
+
+function assetIdFromSourceLink(sourceLink) {
+  const rawUrl = sourceUrl(sourceLink);
+  if (!rawUrl) return "";
+  try {
+    const url = new URL(rawUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const lastPart = parts[parts.length - 1] || "";
+    return /^(?:\d+-?)+$/.test(lastPart) ? lastPart : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function descriptionFromSourceLink(sourceLink) {
   if (!sourceLink) return "";
   try {
-    const url = new URL(sourceLink);
+    const url = new URL(sourceUrl(sourceLink));
     const match = url.pathname.match(/\/detail-[^/]+\/([^/]+)\/[^/]+\/?$/i);
     if (!match) return "";
     const words = decodeURIComponent(match[1]).replace(/[-_]+/g, " ").trim();
@@ -222,7 +241,10 @@ async function updateClipPreview() {
   const unsupported = allRows.filter((item) => !item.type).length;
   const rows = allRows.filter((item) => item.type);
   state.clipFiles = rows.map((item) => item.file);
-  const adjustedRows = await readSourceLinks(rows);
+  const adjustedRows = (await readSourceLinks(rows)).map((item) => ({
+    ...item,
+    sourceName: assetIdFromSourceLink(item.sourceLink) || item.sourceName,
+  }));
   state.clipRows = adjustedRows;
 
   $("clipSelectionStatus").textContent =
@@ -251,7 +273,10 @@ async function logTestClips() {
   try {
     // Re-read Column O immediately before writing so a link added after the
     // preview is still used for Vendor/Source and Description.
-    const rows = await readSourceLinks(getClipRows());
+    const rows = (await readSourceLinks(getClipRows())).map((item) => ({
+      ...item,
+      sourceName: assetIdFromSourceLink(item.sourceLink) || item.sourceName,
+    }));
     state.clipRows = rows;
     const data = rows.map((item) => {
       const vendor = vendorFromSource(item.sourceLink, item.file.name);
