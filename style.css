@@ -340,18 +340,24 @@ button.tool-card { cursor: pointer; font: inherit; }
 .clip-preview {
   display: grid;
   gap: 8px;
+  max-height: 310px;
   margin: 18px 0 20px;
   padding: 14px 16px;
-  border: 1px solid var(--border);
+  overflow-y: auto;
+  border: 1px solid #c7cedf;
   border-radius: 14px;
-  background: rgba(8, 14, 30, .45);
-  color: #dfe5ff;
+  background: #ffffff;
+  color: #17203a;
   font-size: 13px;
   line-height: 1.45;
 }
 
 .clip-preview strong {
-  color: #ffffff;
+  color: #17203a;
+}
+
+.clip-preview span {
+  color: #68718c;
 }
 
 .folder-button {

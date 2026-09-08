@@ -154,6 +154,7 @@ async function collectSourceFiles(directoryHandle) {
     }
   }
   await walk(directoryHandle);
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
   return files;
 }
 
