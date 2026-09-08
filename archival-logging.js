@@ -21,6 +21,8 @@ const state = {
   clipFiles: [],
   clipRows: [],
   sourceDirectoryHandle: null,
+  undoSnapshot: null,
+  renameRecords: [],
 };
 
 function setStatus(message, kind = "") {
@@ -180,6 +182,33 @@ function getClipRows() {
   });
 }
 
+async function prepareClipRows() {
+  const baseRows = getClipRows();
+  const linkedRows = await readSourceLinks(baseRows);
+  const folderFiles = baseRows.map((row) => ({
+    file: row.file,
+    id: sourceFileName(row.file.name),
+  }));
+  const assignedFiles = new Set();
+  const linkedIds = new Set(linkedRows.map((row) => assetIdFromSourceLink(row.sourceLink)).filter(Boolean));
+
+  return linkedRows.map((row) => {
+    const linkedId = assetIdFromSourceLink(row.sourceLink);
+    let matchingFile = null;
+    if (linkedId) {
+      matchingFile = folderFiles.find((entry) => entry.id === linkedId && !assignedFiles.has(entry.file));
+    } else {
+      matchingFile = folderFiles.find((entry) => !assignedFiles.has(entry.file) && !linkedIds.has(entry.id));
+    }
+    if (matchingFile) assignedFiles.add(matchingFile.file);
+    return {
+      ...row,
+      file: matchingFile?.file || row.file,
+      sourceName: linkedId || matchingFile?.id || row.sourceName,
+    };
+  });
+}
+
 async function readSourceLinks(rows) {
   if (!state.spreadsheetId || !rows.length) return rows.map((row) => ({ ...row, sourceLink: "" }));
   const response = await gapi.client.sheets.spreadsheets.values.batchGet({
@@ -263,10 +292,7 @@ async function updateClipPreview() {
   const unsupported = allRows.filter((item) => !item.type).length;
   const rows = allRows.filter((item) => item.type);
   state.clipFiles = rows.map((item) => item.file);
-  const adjustedRows = (await readSourceLinks(rows)).map((item) => ({
-    ...item,
-    sourceName: assetIdFromSourceLink(item.sourceLink) || item.sourceName,
-  }));
+  const adjustedRows = await prepareClipRows();
   state.clipRows = adjustedRows;
 
   $("clipSelectionStatus").textContent =
@@ -295,11 +321,11 @@ async function logTestClips() {
   try {
     // Re-read Column O immediately before writing so a link added after the
     // preview is still used for Vendor/Source and Description.
-    const rows = (await readSourceLinks(getClipRows())).map((item) => ({
-      ...item,
-      sourceName: assetIdFromSourceLink(item.sourceLink) || item.sourceName,
-    }));
+    const rows = await prepareClipRows();
     state.clipRows = rows;
+    const previous = await readTrackerValues(rows);
+    state.undoSnapshot = { rows: previous, renameRecords: [] };
+    state.renameRecords = [];
     const data = rows.map((item) => {
       const vendor = vendorFromSource(item.sourceLink, item.file.name);
       const description = descriptionFromSourceLink(item.sourceLink);
@@ -322,9 +348,56 @@ async function logTestClips() {
     $("clipWriteStatus").textContent = "Success. Wrote source filename(s), footage/still type, vendor, and link description to TAPE LOG.";
     $("renamePanel").classList.remove("hidden");
     $("renameButton").disabled = false;
+    $("undoButton").disabled = false;
   } catch (error) {
     $("clipWriteStatus").textContent = "Write failed: " + error.message;
     $("logClipButton").disabled = false;
+  }
+}
+
+async function readTrackerValues(rows) {
+  const columns = ["D", "F", "J", "M"];
+  const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+    spreadsheetId: state.spreadsheetId,
+    ranges: rows.flatMap((row) => columns.map((column) => quoteSheetName("TAPE LOG") + "!" + column + row.row)),
+  });
+  const values = response.result.valueRanges || [];
+  return rows.map((row, rowIndex) => ({
+    row: row.row,
+    values: columns.map((column, columnIndex) => values[rowIndex * columns.length + columnIndex]?.values?.[0]?.[0] || ""),
+  }));
+}
+
+async function undoLastLog() {
+  if (!state.undoSnapshot) return;
+  if (!window.confirm("Undo the last logging action and reverse any file renames?")) return;
+  try {
+    $("undoButton").disabled = true;
+    const data = state.undoSnapshot.rows.flatMap((item) => [
+      { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.values[0]]] },
+      { range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[item.values[1]]] },
+      { range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[item.values[2]]] },
+      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.values[3]]] },
+    ]);
+    await gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: state.spreadsheetId,
+      resource: { valueInputOption: "USER_ENTERED", data },
+    });
+    for (const record of state.renameRecords) {
+      const renamed = await record.parentHandle.getFileHandle(record.newName);
+      const originalFile = await renamed.getFile();
+      const original = await record.parentHandle.getFileHandle(record.originalName, { create: true });
+      const writable = await original.createWritable();
+      await writable.write(originalFile);
+      await writable.close();
+      await record.parentHandle.removeEntry(record.newName);
+    }
+    $("renameStatus").textContent = "Undo complete. Tracker values and file renames were restored.";
+    $("renameButton").disabled = true;
+    state.undoSnapshot = null;
+  } catch (error) {
+    $("renameStatus").textContent = "Undo failed: " + error.message;
+    $("undoButton").disabled = false;
   }
 }
 
@@ -408,6 +481,11 @@ async function renameLoggedFiles() {
       await writable.close();
       await sourceFile.parentHandle.removeEntry(sourceFile.name);
       usedFiles.add(sourceFile);
+      state.renameRecords.push({
+        parentHandle: sourceFile.parentHandle,
+        originalName: sourceFile.name,
+        newName,
+      });
       results.push("Row " + row.row + ": renamed to " + newName);
     }
 
@@ -494,5 +572,6 @@ window.addEventListener("load", () => {
   $("arcStart").addEventListener("input", updateClipPreview);
   $("logClipButton").addEventListener("click", logTestClips);
   $("renameButton").addEventListener("click", renameLoggedFiles);
+  $("undoButton").addEventListener("click", undoLastLog);
   initializeGoogle();
 });
