@@ -319,15 +319,18 @@ async function updateClipPreview() {
   $("clipSelectionStatus").textContent =
     adjustedRows.length + " file" + (adjustedRows.length === 1 ? "" : "s") + " ready. " +
     (unsupported ? unsupported + " unsupported file" + (unsupported === 1 ? " was" : "s were") + " ignored." : "");
-  preview.innerHTML = adjustedRows.map((item) => {
+  preview.innerHTML =
+    '<table class="clip-preview-table"><thead><tr>' +
+    '<th>Row</th><th>ARC Number</th><th>Source File Name (D)</th><th>Vendor/Source (F)</th>' +
+    '<th>Description (J)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
+    adjustedRows.map((item, index) => {
     const vendor = vendorFromSource(item.sourceLink, item.file.name);
     const description = descriptionFromSourceLink(item.sourceLink);
-    return "<div><strong>Row " + item.row + "</strong> · Source File Name (D): <strong>" + escapeHtml(item.sourceName) +
-    "</strong> · Still/Footage (M): <strong>" + escapeHtml(item.type) +
-    "</strong> · Vendor/Source (F): <strong>" + escapeHtml(vendor || "—") + "</strong> · Description (J): <strong>" +
-    escapeHtml(description || "—") + "</strong> · Column O link: <strong>" + (item.sourceLink ? "found" : "not found") +
-    "</strong> <span>(original file: " + escapeHtml(item.file.name) + ")</span></div>";
-  }).join("");
+    const arcNumber = Number(startValue) + index;
+    return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
+      "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "—") +
+      "</td><td>" + escapeHtml(description || "—") + "</td><td>" + escapeHtml(item.type) + "</td></tr>";
+  }).join("") + '</tbody></table>';
   preview.classList.toggle("hidden", !adjustedRows.length);
   $("logClipButton").disabled = !adjustedRows.length;
 }

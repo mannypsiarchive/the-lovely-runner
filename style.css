@@ -360,6 +360,46 @@ button.tool-card { cursor: pointer; font: inherit; }
   color: #68718c;
 }
 
+.clip-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #17203a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.clip-preview-table th,
+.clip-preview-table td {
+  padding: 9px 10px;
+  border: 1px solid #c7cedf;
+  text-align: left;
+  vertical-align: top;
+}
+
+.clip-preview-table th {
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  background: #e9edf7;
+  color: #17203a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.clip-preview-table td:nth-child(1),
+.clip-preview-table td:nth-child(2),
+.clip-preview-table td:nth-child(6) {
+  text-align: center;
+}
+
+.clip-preview-table .original-file {
+  display: block;
+  margin-top: 3px;
+  color: #68718c;
+  font-size: 11px;
+}
+
 .folder-button {
   width: 100%;
 }
