@@ -189,22 +189,43 @@ async function prepareClipRows() {
     file: row.file,
     id: sourceFileName(row.file.name),
   }));
+  // Pass 1: every valid asset ID from Column O is reserved first.
+  const linkedIds = linkedRows
+    .map((row) => assetIdFromSourceLink(row.sourceLink))
+    .filter(Boolean);
+  const linkedIdSet = new Set(linkedIds);
   const assignedFiles = new Set();
-  const linkedIds = new Set(linkedRows.map((row) => assetIdFromSourceLink(row.sourceLink)).filter(Boolean));
 
-  return linkedRows.map((row) => {
+  // Match linked rows to their physical source files, without allowing those
+  // files or IDs to flow into an unlinked row later.
+  const rowsWithLinks = linkedRows.map((row) => {
     const linkedId = assetIdFromSourceLink(row.sourceLink);
-    let matchingFile = null;
-    if (linkedId) {
-      matchingFile = folderFiles.find((entry) => entry.id === linkedId && !assignedFiles.has(entry.file));
-    } else {
-      matchingFile = folderFiles.find((entry) => !assignedFiles.has(entry.file) && !linkedIds.has(entry.id));
-    }
+    const matchingFile = linkedId
+      ? folderFiles.find((entry) => entry.id === linkedId && !assignedFiles.has(entry.file))
+      : null;
     if (matchingFile) assignedFiles.add(matchingFile.file);
+    return { row, linkedId, matchingFile };
+  });
+
+  // Pass 2: only IDs not accounted for by links may fill empty-link rows.
+  const remainingFiles = folderFiles.filter((entry) =>
+    !assignedFiles.has(entry.file) && !linkedIdSet.has(entry.id)
+  );
+  let remainingIndex = 0;
+  return rowsWithLinks.map(({ row, linkedId, matchingFile }) => {
+    if (linkedId) {
+      return {
+        ...row,
+        file: matchingFile?.file || row.file,
+        sourceName: linkedId,
+      };
+    }
+    const remaining = remainingFiles[remainingIndex++];
+    if (remaining) assignedFiles.add(remaining.file);
     return {
       ...row,
-      file: matchingFile?.file || row.file,
-      sourceName: linkedId || matchingFile?.id || row.sourceName,
+      file: remaining?.file || row.file,
+      sourceName: remaining?.id || "",
     };
   });
 }
