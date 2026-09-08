@@ -160,8 +160,9 @@ async function collectSourceFiles(directoryHandle) {
 
 function sourceFileName(fileName) {
   const stem = String(fileName).replace(/\.[^.]+$/, "");
-  const gettyMatch = stem.match(/^gettyimages-(.+?)-\d+_adpp$/i);
+  const gettyMatch = stem.match(/^gettyimages-(.+?)-(?:\d+x\d+|\d+)(?:_adpp)?$/i);
   if (gettyMatch) return gettyMatch[1];
+  if (/^gettyimages-/i.test(stem)) return stem.replace(/^gettyimages-/i, "");
   return stem;
 }
 
@@ -365,6 +366,7 @@ async function renameLoggedFiles() {
     $("renameStatus").textContent = "Reading final filenames from Column B…";
     const rows = await readFinalNames(state.clipRows?.length ? state.clipRows : getClipRows());
     const results = [];
+    const usedFiles = new Set();
 
     for (const row of rows) {
       if (!row.sourceName) {
@@ -375,7 +377,9 @@ async function renameLoggedFiles() {
         results.push("Row " + row.row + ": missing final filename in B");
         continue;
       }
-      const matches = state.clipFiles.filter((file) => sourceIdMatchesFile(row.sourceName, file.name));
+      const matches = state.clipFiles.filter((file) =>
+        !usedFiles.has(file) && sourceIdMatchesFile(row.sourceName, file.name)
+      );
       if (matches.length !== 1) {
         results.push("Row " + row.row + ": found " + matches.length + " matching source files for " + row.sourceName);
         continue;
@@ -385,11 +389,13 @@ async function renameLoggedFiles() {
       const newName = finalFileName(row.finalName, sourceFile.name);
       if (!newName || newName === sourceFile.name) {
         results.push("Row " + row.row + ": already has the requested filename");
+        usedFiles.add(sourceFile);
         continue;
       }
       try {
         await sourceFile.parentHandle.getFileHandle(newName);
         results.push("Row " + row.row + ": skipped because " + newName + " already exists");
+        usedFiles.add(sourceFile);
         continue;
       } catch (error) {
         // The destination does not exist, so it is safe to create it below.
@@ -401,6 +407,7 @@ async function renameLoggedFiles() {
       await writable.write(originalFile);
       await writable.close();
       await sourceFile.parentHandle.removeEntry(sourceFile.name);
+      usedFiles.add(sourceFile);
       results.push("Row " + row.row + ": renamed to " + newName);
     }
 
