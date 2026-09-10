@@ -165,6 +165,8 @@ function sourceFileName(fileName) {
   const gettyMatch = stem.match(/^gettyimages-(.+?)-(?:\d+x\d+|\d+)(?:_adpp)?$/i);
   if (gettyMatch) return gettyMatch[1];
   if (/^gettyimages-/i.test(stem)) return stem.replace(/^gettyimages-/i, "");
+  const alamyVideoMatch = stem.match(/^(?!shutterstock(?:_|$))([A-Z0-9]{5,12})_\d+$/i);
+  if (alamyVideoMatch) return alamyVideoMatch[1];
   const shutterstockMatch = stem.match(/^shutterstock(?:_editorial)?_(\d+[a-z]*)(?:-.+)?$/i);
   if (shutterstockMatch) return shutterstockMatch[1];
   const pond5Match = stem.match(/^(\d+)-.+$/);
@@ -197,11 +199,15 @@ function getClipRows() {
 }
 
 async function prepareClipRows() {
-  const baseRows = getClipRows();
+  const baseRows = await Promise.all(getClipRows().map(async (row) => ({
+    ...row,
+    alamyMetadata: await readAlamyMetadata(row.file),
+  })));
   const linkedRows = await readSourceLinks(baseRows);
   const folderFiles = baseRows.map((row) => ({
     file: row.file,
     id: sourceFileName(row.file.name),
+    metadata: row.alamyMetadata,
   }));
   // Pass 1: every valid asset ID from Column O is reserved first.
   const linkedIds = linkedRows
@@ -215,7 +221,9 @@ async function prepareClipRows() {
   const rowsWithLinks = linkedRows.map((row) => {
     const linkedId = assetIdFromSourceLink(row.sourceLink);
     const matchingFile = linkedId
-      ? folderFiles.find((entry) => entry.id === linkedId && !assignedFiles.has(entry.file))
+      ? folderFiles.find((entry) => !assignedFiles.has(entry.file) && (
+        entry.id === linkedId || alamyLinkMatchesFile(row.sourceLink, linkedId, entry)
+      ))
       : null;
     if (matchingFile) assignedFiles.add(matchingFile.file);
     return { row, linkedId, matchingFile };
@@ -231,7 +239,8 @@ async function prepareClipRows() {
       return {
         ...row,
         file: matchingFile?.file || row.file,
-        sourceName: linkedId,
+        sourceName: matchingFile && /alamy/i.test(row.sourceLink) ? matchingFile.id : linkedId,
+        alamyMetadata: matchingFile?.metadata || row.alamyMetadata,
       };
     }
     const remaining = remainingFiles[remainingIndex++];
@@ -240,8 +249,52 @@ async function prepareClipRows() {
       ...row,
       file: remaining?.file || row.file,
       sourceName: remaining?.id || "",
+      alamyMetadata: remaining?.metadata || row.alamyMetadata,
     };
   });
+}
+
+function isLikelyAlamyFile(fileName) {
+  const stem = String(fileName).replace(/\.[^.]+$/, "");
+  if (/^(?:gettyimages|shutterstock)(?:[-_]|$)/i.test(stem)) return false;
+  return /^[A-Z0-9]{5,12}(?:_\d+)?$/i.test(stem);
+}
+
+async function readAlamyMetadata(fileEntry) {
+  try {
+    const file = await fileEntry.handle.getFile();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const printableRuns = [];
+    let run = "";
+    for (const byte of bytes) {
+      if (byte >= 32 && byte <= 126) run += String.fromCharCode(byte);
+      else {
+        if (run.length >= 4) printableRuns.push(run);
+        run = "";
+      }
+    }
+    if (run.length >= 4) printableRuns.push(run);
+    const text = printableRuns.join("\n");
+    const urlMatch = text.match(/https?:\/\/www\.alamy\.com\/([A-Z0-9]{5,12})/i);
+    const assetId = urlMatch?.[1] || "";
+    const titleMatch = assetId && text.match(new RegExp(assetId + "\\s+([A-Z][^\\r\\n]{12,240})", "i"));
+    const description = titleMatch?.[1]?.replace(/\s+/g, " ").trim() || "";
+    return { assetId, description, isAlamy: Boolean(assetId) };
+  } catch (error) {
+    return { assetId: "", description: "", isAlamy: false };
+  }
+}
+
+function normalizeMatchText(value) {
+  return String(value || "").toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function alamyLinkMatchesFile(sourceLink, linkedId, entry) {
+  if (!/alamy/i.test(sourceLink)) return false;
+  if (new RegExp("(?:_|-)" + String(linkedId).replace(/\D/g, "") + "(?:\\.|$)", "i").test(entry.file.name)) return true;
+  const linkedDescription = descriptionFromSourceLink(sourceLink);
+  return Boolean(entry.metadata?.description && linkedDescription &&
+    normalizeMatchText(entry.metadata.description) === normalizeMatchText(linkedDescription));
 }
 
 async function readSourceLinks(rows) {
@@ -258,16 +311,18 @@ async function readSourceLinks(rows) {
   }));
 }
 
-function vendorFromSource(sourceLink, fileName) {
+function vendorFromSource(sourceLink, fileName, alamyMetadata) {
   const link = String(sourceLink || "");
   const name = String(fileName || "");
   if (/gettyimages|Getty Images/i.test(link) || /gettyimages/i.test(name)) return "Getty Images";
   if (/pond5\.com|Pond5/i.test(link) || /^\d+-.+\.[A-Za-z0-9]+$/i.test(name)) return "Pond5";
   if (/shutterstock/i.test(link) || /shutterstock/i.test(name)) return "Shutterstock";
+  if (alamyMetadata?.isAlamy || isLikelyAlamyFile(name)) return "Alamy";
   return "";
 }
 
-function archivalClassFromSource(sourceLink, fileName) {
+function archivalClassFromSource(sourceLink, fileName, alamyMetadata) {
+  if (/alamy/i.test(sourceLink) || alamyMetadata?.isAlamy || isLikelyAlamyFile(fileName)) return "E";
   const isShutterstock = /shutterstock/i.test(sourceLink) || /shutterstock/i.test(fileName);
   if (!isShutterstock) return "";
   return /editorial/i.test(sourceLink) || /editorial/i.test(fileName) ? "E" : "C";
@@ -292,6 +347,10 @@ function assetIdFromSourceLink(sourceLink) {
       const pond5Match = parts[itemIndex + 1].match(/^(\d+)-/);
       if (pond5Match) return pond5Match[1];
     }
+    if (/alamy/i.test(url.hostname + url.pathname)) {
+      const alamyMatch = url.pathname.match(/(?:image|video)?(\d+)\.html\/?$/i);
+      if (alamyMatch) return alamyMatch[1];
+    }
     if (/shutterstock/i.test(url.hostname + url.pathname)) {
       const videoMatch = url.pathname.match(/\/clip-(\d+)(?:-|$)/i);
       if (videoMatch) return videoMatch[1];
@@ -315,6 +374,13 @@ function descriptionFromSourceLink(sourceLink) {
       const pond5Match = parts[itemIndex + 1].match(/^\d+-(.+)$/);
       if (pond5Match) {
         const words = decodeURIComponent(pond5Match[1]).replace(/[-_]+/g, " ").trim();
+        return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+      }
+    }
+    if (/alamy/i.test(url.hostname + url.pathname)) {
+      const alamyMatch = url.pathname.match(/\/([^/]+)-(?:image|video)?\d+\.html\/?$/i);
+      if (alamyMatch) {
+        const words = decodeURIComponent(alamyMatch[1]).replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
         return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
       }
     }
@@ -378,9 +444,9 @@ async function updateClipPreview() {
     '<th>Row</th><th>ARC Number</th><th>Source File Name (D)</th><th>Vendor/Source (F)</th>' +
     '<th>Description (J)</th><th>Archival Class (L)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
     adjustedRows.map((item, index) => {
-    const vendor = vendorFromSource(item.sourceLink, item.file.name);
-    const description = descriptionFromSourceLink(item.sourceLink) || descriptionFromFileName(item.file.name);
-    const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name);
+    const vendor = vendorFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
+    const description = descriptionFromSourceLink(item.sourceLink) || item.alamyMetadata?.description || descriptionFromFileName(item.file.name);
+    const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
     const arcNumber = Number(startValue) + index;
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
       "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "—") +
@@ -406,9 +472,9 @@ async function logTestClips() {
     state.undoSnapshot = { rows: previous, renameRecords: [] };
     state.renameRecords = [];
     const data = rows.map((item) => {
-      const vendor = vendorFromSource(item.sourceLink, item.file.name);
-      const description = descriptionFromSourceLink(item.sourceLink) || descriptionFromFileName(item.file.name);
-      const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name);
+      const vendor = vendorFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
+      const description = descriptionFromSourceLink(item.sourceLink) || item.alamyMetadata?.description || descriptionFromFileName(item.file.name);
+      const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
       return [
         { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
         { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
