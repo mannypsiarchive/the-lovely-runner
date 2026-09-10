@@ -169,14 +169,14 @@ function sourceFileName(fileName) {
   if (alamyVideoMatch) return alamyVideoMatch[1];
   const shutterstockMatch = stem.match(/^shutterstock(?:_editorial)?_(\d+[a-z]*)(?:-.+)?$/i);
   if (shutterstockMatch) return shutterstockMatch[1];
-  const pond5Match = stem.match(/^(\d+)-.+$/);
+  const pond5Match = stem.match(/^(\d{6,})-.+$/);
   if (pond5Match) return pond5Match[1];
   return stem;
 }
 
 function descriptionFromFileName(fileName) {
   const stem = String(fileName).replace(/\.[^.]+$/, "");
-  const pond5Match = stem.match(/^\d+-(.+)$/);
+  const pond5Match = stem.match(/^\d{6,}-(.+)$/);
   const shutterstockMatch = stem.match(/^shutterstock(?:_editorial)?_\d+[a-z]*-(.+)$/i);
   const description = pond5Match?.[1] || shutterstockMatch?.[1] || "";
   if (!description) return "";
@@ -315,7 +315,7 @@ function vendorFromSource(sourceLink, fileName, alamyMetadata) {
   const link = String(sourceLink || "");
   const name = String(fileName || "");
   if (/gettyimages|Getty Images/i.test(link) || /gettyimages/i.test(name)) return "Getty Images";
-  if (/pond5\.com|Pond5/i.test(link) || /^\d+-.+\.[A-Za-z0-9]+$/i.test(name)) return "Pond5";
+  if (/pond5\.com|Pond5/i.test(link) || /^\d{6,}-.+\.[A-Za-z0-9]+$/i.test(name)) return "Pond5";
   if (/shutterstock/i.test(link) || /shutterstock/i.test(name)) return "Shutterstock";
   if (alamyMetadata?.isAlamy || isLikelyAlamyFile(name)) return "Alamy";
   return "";
@@ -449,7 +449,7 @@ async function updateClipPreview() {
     const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
     const arcNumber = Number(startValue) + index;
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
-      "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "—") +
+      "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "Unable to classify") +
       "</td><td>" + escapeHtml(description || "—") + "</td><td>" + escapeHtml(archivalClass || "—") + "</td><td>" + escapeHtml(item.type) + "</td></tr>";
   }).join("") + '</tbody></table>';
   preview.classList.toggle("hidden", !adjustedRows.length);
