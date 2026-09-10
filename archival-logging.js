@@ -165,6 +165,8 @@ function sourceFileName(fileName) {
   const gettyMatch = stem.match(/^gettyimages-(.+?)-(?:\d+x\d+|\d+)(?:_adpp)?$/i);
   if (gettyMatch) return gettyMatch[1];
   if (/^gettyimages-/i.test(stem)) return stem.replace(/^gettyimages-/i, "");
+  const shutterstockMatch = stem.match(/^shutterstock(?:_editorial)?_(\d+[a-z]*)(?:-.+)?$/i);
+  if (shutterstockMatch) return shutterstockMatch[1];
   const pond5Match = stem.match(/^(\d+)-.+$/);
   if (pond5Match) return pond5Match[1];
   return stem;
@@ -173,8 +175,10 @@ function sourceFileName(fileName) {
 function descriptionFromFileName(fileName) {
   const stem = String(fileName).replace(/\.[^.]+$/, "");
   const pond5Match = stem.match(/^\d+-(.+)$/);
-  if (!pond5Match) return "";
-  const words = pond5Match[1].replace(/[-_]+/g, " ").trim();
+  const shutterstockMatch = stem.match(/^shutterstock(?:_editorial)?_\d+[a-z]*-(.+)$/i);
+  const description = pond5Match?.[1] || shutterstockMatch?.[1] || "";
+  if (!description) return "";
+  const words = description.replace(/[-_]+/g, " ").trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
 }
 
@@ -256,9 +260,17 @@ async function readSourceLinks(rows) {
 function vendorFromSource(sourceLink, fileName) {
   if (/gettyimages|Getty Images/i.test(sourceLink)) return "Getty Images";
   if (/pond5\.com|Pond5/i.test(sourceLink)) return "Pond5";
+  if (/shutterstock/i.test(sourceLink)) return "Shutterstock";
   if (/gettyimages/i.test(fileName)) return "Getty Images";
   if (/^\d+-.+\.[A-Za-z0-9]+$/i.test(fileName)) return "Pond5";
+  if (/shutterstock/i.test(fileName)) return "Shutterstock";
   return "";
+}
+
+function archivalClassFromSource(sourceLink, fileName) {
+  const isShutterstock = /shutterstock/i.test(sourceLink) || /shutterstock/i.test(fileName);
+  if (!isShutterstock) return "";
+  return /editorial/i.test(sourceLink) || /editorial/i.test(fileName) ? "E" : "C";
 }
 
 function sourceUrl(sourceLink) {
@@ -280,6 +292,12 @@ function assetIdFromSourceLink(sourceLink) {
       const pond5Match = parts[itemIndex + 1].match(/^(\d+)-/);
       if (pond5Match) return pond5Match[1];
     }
+    if (/shutterstock/i.test(url.hostname + url.pathname)) {
+      const videoMatch = url.pathname.match(/\/clip-(\d+)(?:-|$)/i);
+      if (videoMatch) return videoMatch[1];
+      const imageMatch = url.pathname.match(/(?:--|-)(\d+[a-z]+)\/?$/i);
+      if (imageMatch) return imageMatch[1];
+    }
     const lastPart = parts[parts.length - 1] || "";
     return /^(?:\d+-?)+$/.test(lastPart) ? lastPart : "";
   } catch (error) {
@@ -297,6 +315,16 @@ function descriptionFromSourceLink(sourceLink) {
       const pond5Match = parts[itemIndex + 1].match(/^\d+-(.+)$/);
       if (pond5Match) {
         const words = decodeURIComponent(pond5Match[1]).replace(/[-_]+/g, " ").trim();
+        return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+      }
+    }
+    if (/shutterstock/i.test(url.hostname + url.pathname)) {
+      const videoMatch = url.pathname.match(/\/clip-\d+-(.+)\/?$/i);
+      const imageMatch = url.pathname.match(/\/([^/]+)--\d+[a-z]+\/?$/i) ||
+        url.pathname.match(/\/([^/]+)-\d+[a-z]+\/?$/i);
+      const match = videoMatch || imageMatch;
+      if (match) {
+        const words = decodeURIComponent(match[1]).replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
         return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
       }
     }
@@ -348,14 +376,15 @@ async function updateClipPreview() {
   preview.innerHTML =
     '<table class="clip-preview-table"><thead><tr>' +
     '<th>Row</th><th>ARC Number</th><th>Source File Name (D)</th><th>Vendor/Source (F)</th>' +
-    '<th>Description (J)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
+    '<th>Description (J)</th><th>Archival Class (L)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
     adjustedRows.map((item, index) => {
     const vendor = vendorFromSource(item.sourceLink, item.file.name);
     const description = descriptionFromSourceLink(item.sourceLink) || descriptionFromFileName(item.file.name);
+    const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name);
     const arcNumber = Number(startValue) + index;
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
       "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "—") +
-      "</td><td>" + escapeHtml(description || "—") + "</td><td>" + escapeHtml(item.type) + "</td></tr>";
+      "</td><td>" + escapeHtml(description || "—") + "</td><td>" + escapeHtml(archivalClass || "—") + "</td><td>" + escapeHtml(item.type) + "</td></tr>";
   }).join("") + '</tbody></table>';
   preview.classList.toggle("hidden", !adjustedRows.length);
   $("logClipButton").disabled = !adjustedRows.length;
@@ -379,11 +408,13 @@ async function logTestClips() {
     const data = rows.map((item) => {
       const vendor = vendorFromSource(item.sourceLink, item.file.name);
       const description = descriptionFromSourceLink(item.sourceLink) || descriptionFromFileName(item.file.name);
+      const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name);
       return [
         { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
         { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
         ...(vendor ? [{ range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[vendor]] }] : []),
         ...(description ? [{ range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[description]] }] : []),
+        ...(archivalClass ? [{ range: quoteSheetName("TAPE LOG") + "!L" + item.row, values: [[archivalClass]] }] : []),
       ];
     }).flat();
     $("logClipButton").disabled = true;
@@ -406,7 +437,7 @@ async function logTestClips() {
 }
 
 async function readTrackerValues(rows) {
-  const columns = ["D", "F", "J", "M"];
+  const columns = ["D", "F", "J", "L", "M"];
   const response = await gapi.client.sheets.spreadsheets.values.batchGet({
     spreadsheetId: state.spreadsheetId,
     ranges: rows.flatMap((row) => columns.map((column) => quoteSheetName("TAPE LOG") + "!" + column + row.row)),
@@ -427,7 +458,8 @@ async function undoLastLog() {
       { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.values[0]]] },
       { range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[item.values[1]]] },
       { range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[item.values[2]]] },
-      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.values[3]]] },
+      { range: quoteSheetName("TAPE LOG") + "!L" + item.row, values: [[item.values[3]]] },
+      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.values[4]]] },
     ]);
     await gapi.client.sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: state.spreadsheetId,
@@ -493,31 +525,31 @@ async function renameLoggedFiles() {
 
     for (const row of rows) {
       if (!row.sourceName) {
-        results.push("Row " + row.row + ": missing source filename in D");
+        results.push("Row " + row.row + " — source filename missing in D — Not renamed");
         continue;
       }
       if (!row.finalName) {
-        results.push("Row " + row.row + ": missing final filename in B");
+        results.push("Row " + row.row + " — final filename missing in B — Not renamed");
         continue;
       }
       const matches = state.clipFiles.filter((file) =>
         !usedFiles.has(file) && sourceIdMatchesFile(row.sourceName, file.name)
       );
       if (matches.length !== 1) {
-        results.push("Row " + row.row + ": found " + matches.length + " matching source files for " + row.sourceName);
+        results.push("Row " + row.row + " — found " + matches.length + " matching source files for " + row.sourceName + " — Not renamed");
         continue;
       }
 
       const sourceFile = matches[0];
       const newName = finalFileName(row.finalName, sourceFile.name);
       if (!newName || newName === sourceFile.name) {
-        results.push("Row " + row.row + ": already has the requested filename");
+        results.push("Row " + row.row + " — already named " + newName + " — No change needed");
         usedFiles.add(sourceFile);
         continue;
       }
       try {
         await sourceFile.parentHandle.getFileHandle(newName);
-        results.push("Row " + row.row + ": skipped because " + newName + " already exists");
+        results.push("Row " + row.row + " — " + newName + " already exists — Not renamed");
         usedFiles.add(sourceFile);
         continue;
       } catch (error) {
@@ -536,10 +568,10 @@ async function renameLoggedFiles() {
         originalName: sourceFile.name,
         newName,
       });
-      results.push("Row " + row.row + ": renamed to " + newName);
+      results.push("Row " + row.row + " — renamed to " + newName + " — Successfully renamed");
     }
 
-    $("renameStatus").textContent = results.join(" · ");
+    $("renameStatus").textContent = results.join("\n");
   } catch (error) {
     $("renameStatus").textContent = "Rename failed: " + error.message;
     $("renameButton").disabled = false;

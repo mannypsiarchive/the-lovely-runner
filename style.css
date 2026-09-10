@@ -389,8 +389,13 @@ button.tool-card { cursor: pointer; font: inherit; }
 
 .clip-preview-table td:nth-child(1),
 .clip-preview-table td:nth-child(2),
-.clip-preview-table td:nth-child(6) {
+.clip-preview-table td:nth-child(6),
+.clip-preview-table td:nth-child(7) {
   text-align: center;
+}
+
+#renameStatus {
+  white-space: pre-line;
 }
 
 .clip-preview-table .original-file {
