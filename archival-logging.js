@@ -165,7 +165,17 @@ function sourceFileName(fileName) {
   const gettyMatch = stem.match(/^gettyimages-(.+?)-(?:\d+x\d+|\d+)(?:_adpp)?$/i);
   if (gettyMatch) return gettyMatch[1];
   if (/^gettyimages-/i.test(stem)) return stem.replace(/^gettyimages-/i, "");
+  const pond5Match = stem.match(/^(\d+)-.+$/);
+  if (pond5Match) return pond5Match[1];
   return stem;
+}
+
+function descriptionFromFileName(fileName) {
+  const stem = String(fileName).replace(/\.[^.]+$/, "");
+  const pond5Match = stem.match(/^\d+-(.+)$/);
+  if (!pond5Match) return "";
+  const words = pond5Match[1].replace(/[-_]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
 }
 
 function getClipRows() {
@@ -245,7 +255,9 @@ async function readSourceLinks(rows) {
 
 function vendorFromSource(sourceLink, fileName) {
   if (/gettyimages|Getty Images/i.test(sourceLink)) return "Getty Images";
+  if (/pond5\.com|Pond5/i.test(sourceLink)) return "Pond5";
   if (/gettyimages/i.test(fileName)) return "Getty Images";
+  if (/^\d+-.+\.[A-Za-z0-9]+$/i.test(fileName)) return "Pond5";
   return "";
 }
 
@@ -263,6 +275,11 @@ function assetIdFromSourceLink(sourceLink) {
   try {
     const url = new URL(rawUrl);
     const parts = url.pathname.split("/").filter(Boolean);
+    const itemIndex = parts.findIndex((part) => part.toLowerCase() === "item");
+    if (itemIndex >= 0 && parts[itemIndex + 1]) {
+      const pond5Match = parts[itemIndex + 1].match(/^(\d+)-/);
+      if (pond5Match) return pond5Match[1];
+    }
     const lastPart = parts[parts.length - 1] || "";
     return /^(?:\d+-?)+$/.test(lastPart) ? lastPart : "";
   } catch (error) {
@@ -274,6 +291,15 @@ function descriptionFromSourceLink(sourceLink) {
   if (!sourceLink) return "";
   try {
     const url = new URL(sourceUrl(sourceLink));
+    const parts = url.pathname.split("/").filter(Boolean);
+    const itemIndex = parts.findIndex((part) => part.toLowerCase() === "item");
+    if (itemIndex >= 0 && parts[itemIndex + 1]) {
+      const pond5Match = parts[itemIndex + 1].match(/^\d+-(.+)$/);
+      if (pond5Match) {
+        const words = decodeURIComponent(pond5Match[1]).replace(/[-_]+/g, " ").trim();
+        return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+      }
+    }
     // Getty uses /detail/video/<description>/<asset-id> URLs.
     // Keep support for the alternate detail-video form as well.
     const match = url.pathname.match(/\/detail(?:\/[^/]+|-video)\/([^/]+)\/[^/]+\/?$/i);
@@ -325,7 +351,7 @@ async function updateClipPreview() {
     '<th>Description (J)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
     adjustedRows.map((item, index) => {
     const vendor = vendorFromSource(item.sourceLink, item.file.name);
-    const description = descriptionFromSourceLink(item.sourceLink);
+    const description = descriptionFromSourceLink(item.sourceLink) || descriptionFromFileName(item.file.name);
     const arcNumber = Number(startValue) + index;
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
       "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "—") +
@@ -352,7 +378,7 @@ async function logTestClips() {
     state.renameRecords = [];
     const data = rows.map((item) => {
       const vendor = vendorFromSource(item.sourceLink, item.file.name);
-      const description = descriptionFromSourceLink(item.sourceLink);
+      const description = descriptionFromSourceLink(item.sourceLink) || descriptionFromFileName(item.file.name);
       return [
         { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
         { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
