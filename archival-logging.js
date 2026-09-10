@@ -1,3 +1,5 @@
+const LOGGER_BUILD = "1.13";
+
 /*
   Google Sheets connection for The Lovely Runner.
 
@@ -691,6 +693,7 @@ function escapeAttribute(value) {
 }
 
 window.addEventListener("load", () => {
+  $("loggerStatus").textContent = "Build " + LOGGER_BUILD + " loaded. Enter a sheet link, then connect your Google account.";
   $("connectButton").addEventListener("click", () => {
     try {
       ensureCredentials();
