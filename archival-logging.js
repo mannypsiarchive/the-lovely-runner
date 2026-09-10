@@ -249,6 +249,7 @@ async function readSourceLinks(rows) {
   const response = await gapi.client.sheets.spreadsheets.values.batchGet({
     spreadsheetId: state.spreadsheetId,
     ranges: rows.map((item) => quoteSheetName("TAPE LOG") + "!O" + item.row),
+    valueRenderOption: "FORMULA",
   });
   const valueRanges = response.result.valueRanges || [];
   return rows.map((row, index) => ({
@@ -258,12 +259,11 @@ async function readSourceLinks(rows) {
 }
 
 function vendorFromSource(sourceLink, fileName) {
-  if (/gettyimages|Getty Images/i.test(sourceLink)) return "Getty Images";
-  if (/pond5\.com|Pond5/i.test(sourceLink)) return "Pond5";
-  if (/shutterstock/i.test(sourceLink)) return "Shutterstock";
-  if (/gettyimages/i.test(fileName)) return "Getty Images";
-  if (/^\d+-.+\.[A-Za-z0-9]+$/i.test(fileName)) return "Pond5";
-  if (/shutterstock/i.test(fileName)) return "Shutterstock";
+  const link = String(sourceLink || "");
+  const name = String(fileName || "");
+  if (/gettyimages|Getty Images/i.test(link) || /gettyimages/i.test(name)) return "Getty Images";
+  if (/pond5\.com|Pond5/i.test(link) || /^\d+-.+\.[A-Za-z0-9]+$/i.test(name)) return "Pond5";
+  if (/shutterstock/i.test(link) || /shutterstock/i.test(name)) return "Shutterstock";
   return "";
 }
 
@@ -426,7 +426,7 @@ async function logTestClips() {
         data,
       },
     });
-    $("clipWriteStatus").textContent = "Success. Wrote source filename(s), footage/still type, vendor, and link description to TAPE LOG.";
+    $("clipWriteStatus").textContent = "Success. Wrote source filename(s), footage/still type, vendor, archival class, and link/filename description to TAPE LOG.";
     $("renamePanel").classList.remove("hidden");
     $("renameButton").disabled = false;
     $("undoButton").disabled = false;
