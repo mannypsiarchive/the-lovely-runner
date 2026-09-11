@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
-        <h1>Archival Logging Helper <span class="version-tag">1.16</span></h1>
+        <h1>Archival Logging Helper <span class="version-tag">1.17</span></h1>
         <p>Connect Archival Tracker, Batch Log and Rename Archival Files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
@@ -94,8 +94,8 @@
         </div>
         <p class="manual-source-note">Archival Logger will auto-generate source for Getty, Alamy, Pond5, and Shutterstock. Only use this for other Sources.</p>
         <div class="manual-source-options">
-          <label><input type="radio" name="manualApplyMode" value="batch" checked> Apply Source to All in Current Range</label>
-          <label><input type="radio" name="manualApplyMode" value="range"> Apply Source to ARC Range</label>
+          <label><input type="radio" name="manualApplyMode" value="batch" checked> Apply Source to All</label>
+          <label><input type="radio" name="manualApplyMode" value="range"> Apply Source to Range</label>
         </div>
         <div class="manual-range-grid hidden" id="manualRangeFields">
           <div class="field"><label for="manualStart">Manual ARC Start</label><input id="manualStart" type="number" min="0" step="1" placeholder="Start ARC"></div>
@@ -111,25 +111,25 @@
         <div class="adjustment-row">
           <label for="manualEpisode">Episode/Segment (H)</label>
           <input id="manualEpisode" type="text" placeholder="Optional episode or segment">
-          <select id="manualEpisodeMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <select id="manualEpisodeMode"><option value="batch">Apply to All</option><option value="range">Apply to Range</option></select>
           <button class="button secondary" data-adjustment="episode">Apply</button>
         </div>
         <div class="adjustment-row">
           <label for="manualDescription">File Description (I)</label>
           <input id="manualDescription" type="text" placeholder="Optional file description">
-          <select id="manualDescriptionMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <select id="manualDescriptionMode"><option value="batch">Apply to All</option><option value="range">Apply to Range</option></select>
           <button class="button secondary" data-adjustment="description">Apply</button>
         </div>
         <div class="adjustment-row">
           <label for="manualHires">HIRES (K)</label>
           <select id="manualHires" disabled><option value="">Connect a tracker to load Column K values</option></select>
-          <select id="manualHiresMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <select id="manualHiresMode"><option value="batch">Apply to All</option><option value="range">Apply to Range</option></select>
           <button class="button secondary" data-adjustment="hires">Apply</button>
         </div>
         <div class="adjustment-row">
           <label for="manualClass">Archival Class (L)</label>
           <select id="manualClass" disabled><option value="">Connect a tracker to load Column L values</option></select>
-          <select id="manualClassMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <select id="manualClassMode"><option value="batch">Apply to All</option><option value="range">Apply to Range</option></select>
           <button class="button secondary" data-adjustment="class">Apply</button>
         </div>
         <div class="manual-adjustment-range">

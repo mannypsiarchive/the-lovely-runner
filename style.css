@@ -604,6 +604,17 @@ input[type="text"], input[type="file"], select {
   color: #68718c;
 }
 
+/* Keep every logger entry field readable while the site remains dark. */
+.logger-card input:not([type="radio"]),
+.logger-card select {
+  background: #ffffff;
+  color: #17203a;
+}
+
+.logger-card input:not([type="radio"])::placeholder {
+  color: #68718c;
+}
+
 input[type="file"] { padding-top: 12px; }
 
 input:focus, select:focus {
