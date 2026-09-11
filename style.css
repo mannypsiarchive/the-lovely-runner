@@ -607,12 +607,50 @@ input[type="text"], input[type="file"], select {
 /* Keep every logger entry field readable while the site remains dark. */
 .logger-card input:not([type="radio"]),
 .logger-card select {
-  background: #ffffff;
-  color: #17203a;
+  background: #ffffff !important;
+  color: #17203a !important;
+  color-scheme: light;
 }
 
 .logger-card input:not([type="radio"])::placeholder {
   color: #68718c;
+}
+
+/* Manual controls should match the white HIRES/Class controls exactly. */
+#manualVendor,
+#manualEpisode,
+#manualDescription,
+#manualHires,
+#manualClass,
+#manualEpisodeMode,
+#manualDescriptionMode,
+#manualHiresMode,
+#manualClassMode,
+#adjustmentStart,
+#adjustmentEnd {
+  background: #ffffff !important;
+  color: #17203a !important;
+  color-scheme: light;
+}
+
+#manualEpisodeMode:focus,
+#manualDescriptionMode:focus,
+#manualHiresMode:focus,
+#manualClassMode:focus,
+#manualHires:focus,
+#manualClass:focus {
+  background: #ffffff !important;
+  color: #17203a !important;
+}
+
+#manualEpisodeMode option,
+#manualDescriptionMode option,
+#manualHiresMode option,
+#manualClassMode option,
+#manualHires option,
+#manualClass option {
+  background: #ffffff;
+  color: #17203a;
 }
 
 input[type="file"] { padding-top: 12px; }

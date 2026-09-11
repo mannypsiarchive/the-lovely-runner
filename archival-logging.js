@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.17";
+const LOGGER_BUILD = "1.18";
 
 /*
   Google Sheets connection for The Lovely Runner.
