@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.15";
+const LOGGER_BUILD = "1.16";
 
 /*
   Google Sheets connection for The Lovely Runner.
@@ -26,6 +26,8 @@ const state = {
   undoSnapshot: null,
   renameRecords: [],
   manualVendors: [],
+  manualOverrides: {},
+  trackerOptions: { hires: [], archivalClass: [] },
 };
 
 function setStatus(message, kind = "") {
@@ -85,19 +87,31 @@ function maybeEnableConnection() {
 }
 
 async function loadManualVendors() {
-  const select = $("manualVendor");
-  if (!select || !state.spreadsheetId) return;
-  const response = await gapi.client.sheets.spreadsheets.values.get({
-    spreadsheetId: state.spreadsheetId,
-    range: quoteSheetName("TAPE LOG") + "!F:F",
+  if (!state.spreadsheetId) return;
+  const columns = await Promise.all(["F", "K", "L"].map((column) =>
+    gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: state.spreadsheetId,
+      range: quoteSheetName("TAPE LOG") + "!" + column + ":" + column,
+    })
+  ));
+  const uniqueValues = (response) => [...new Set((response.result.values || []).flat()
+    .map((value) => String(value || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  state.manualVendors = uniqueValues(columns[0]);
+  $("manualVendorOptions").innerHTML = state.manualVendors
+    .map((vendor) => '<option value="' + escapeAttribute(vendor) + '"></option>').join("");
+  $("manualVendor").disabled = false;
+  [
+    ["manualHires", columns[1], "Choose a HIRES value"],
+    ["manualClass", columns[2], "Choose an archival class"],
+  ].forEach(([id, response, label]) => {
+    const values = uniqueValues(response);
+    if (id === "manualHires") state.trackerOptions.hires = values;
+    if (id === "manualClass") state.trackerOptions.archivalClass = values;
+    $(id).innerHTML = '<option value="">' + label + '</option>' +
+      values.map((value) => '<option value="' + escapeAttribute(value) + '">' + escapeHtml(value) + '</option>').join("");
+    $(id).disabled = false;
   });
-  const values = (response.result.values || []).flat()
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  state.manualVendors = [...new Set(values)].sort((a, b) => a.localeCompare(b));
-  select.innerHTML = '<option value="">Choose a source</option>' +
-    state.manualVendors.map((vendor) => '<option value="' + escapeAttribute(vendor) + '">' + escapeHtml(vendor) + '</option>').join("");
-  select.disabled = false;
   $("applyManualVendorButton").disabled = false;
 }
 
@@ -465,15 +479,17 @@ async function updateClipPreview() {
   preview.innerHTML =
     '<table class="clip-preview-table"><thead><tr>' +
     '<th>Row</th><th>ARC Number</th><th>Source File Name (D)</th><th>Vendor/Source (F)</th>' +
-    '<th>Description (J)</th><th>Archival Class (L)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
+    '<th>Episode/Segment (H)</th><th>File Description (I)</th><th>Description (J)</th><th>HIRES (K)</th><th>Archival Class (L)</th><th>Still/Footage (M)</th></tr></thead><tbody>' +
     adjustedRows.map((item, index) => {
     const vendor = vendorFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
     const description = descriptionFromSourceLink(item.sourceLink) || item.alamyMetadata?.description || descriptionFromFileName(item.file.name);
     const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
+    const overrides = state.manualOverrides[item.row] || {};
     const arcNumber = Number(startValue) + index;
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
-      "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml(vendor || "Unable to classify") +
-      "</td><td>" + escapeHtml(description || "—") + "</td><td>" + escapeHtml(archivalClass || "—") + "</td><td>" + escapeHtml(item.type) + "</td></tr>";
+      "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml((overrides.F ?? vendor) || "Unable to classify") +
+      "</td><td>" + escapeHtml(overrides.H ?? "—") + "</td><td>" + escapeHtml(overrides.I ?? "—") + "</td><td>" + escapeHtml(description || "—") +
+      "</td><td>" + escapeHtml(overrides.K ?? "—") + "</td><td>" + escapeHtml((overrides.L ?? archivalClass) || "—") + "</td><td>" + escapeHtml(item.type) + "</td></tr>";
   }).join("") + '</tbody></table>';
   preview.classList.toggle("hidden", !adjustedRows.length);
   $("logClipButton").disabled = !adjustedRows.length;
@@ -522,12 +538,86 @@ async function applyManualVendor() {
       spreadsheetId: state.spreadsheetId,
       resource: { valueInputOption: "USER_ENTERED", data },
     });
+    rows.forEach((row) => { state.manualOverrides[row.row] = { ...(state.manualOverrides[row.row] || {}), F: vendor }; });
+    if (mode === "batch") await updateClipPreview();
     $("manualVendorStatus").textContent = "Applied " + vendor + " to " + rows.length + " row" + (rows.length === 1 ? "" : "s") + ".";
   } catch (error) {
     $("manualVendorStatus").textContent = "Manual source update failed: " + error.message;
   } finally {
     $("applyManualVendorButton").disabled = false;
   }
+}
+
+async function applyTrackerAdjustment(type) {
+  const config = {
+    episode: { column: "H", input: "manualEpisode", mode: "manualEpisodeMode" },
+    description: { column: "I", input: "manualDescription", mode: "manualDescriptionMode" },
+    hires: { column: "K", input: "manualHires", mode: "manualHiresMode" },
+    class: { column: "L", input: "manualClass", mode: "manualClassMode" },
+  }[type];
+  const value = $(config.input).value;
+  if (!value.trim()) {
+    $("adjustmentStatus").textContent = "Enter or choose a value before applying it.";
+    return;
+  }
+  const mode = $(config.mode).value;
+  let rows;
+  if (mode === "batch") {
+    rows = state.clipRows?.length ? state.clipRows : getClipRows();
+  } else {
+    const start = Number($("adjustmentStart").value);
+    const end = Number($("adjustmentEnd").value);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+      $("adjustmentStatus").textContent = "Enter a valid Adjustment ARC Start and Adjustment ARC End.";
+      return;
+    }
+    rows = Array.from({ length: end - start + 1 }, (_, index) => ({ row: start + index + 1 }));
+  }
+  if (!rows.length) {
+    $("adjustmentStatus").textContent = "Choose a Source Folder or enter an ARC range first.";
+    return;
+  }
+  try {
+    const data = rows.map((row) => ({
+      range: quoteSheetName("TAPE LOG") + "!" + config.column + row.row,
+      values: [[value]],
+    }));
+    await gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: state.spreadsheetId,
+      resource: { valueInputOption: "USER_ENTERED", data },
+    });
+    rows.forEach((row) => { state.manualOverrides[row.row] = { ...(state.manualOverrides[row.row] || {}), [config.column]: value }; });
+    if (mode === "batch") await updateClipPreview();
+    $("adjustmentStatus").textContent = "Applied " + value + " to " + rows.length + " row" + (rows.length === 1 ? "" : "s") + " in Column " + config.column + ".";
+  } catch (error) {
+    $("adjustmentStatus").textContent = "Adjustment failed: " + error.message;
+  }
+}
+
+function resetSourceFolder() {
+  state.sourceDirectoryHandle = null;
+  state.clipFiles = [];
+  state.clipRows = [];
+  state.manualOverrides = {};
+  $("sourceFolderName").textContent = "No source folder selected.";
+  $("clipSelectionStatus").textContent = "Choose a source folder containing one or more clips.";
+  $("clipPreview").innerHTML = "";
+  $("clipPreview").classList.add("hidden");
+  $("assetCount").value = 0;
+  $("arcFinish").value = "";
+  $("manualVendor").value = "";
+  $("manualEpisode").value = "";
+  $("manualDescription").value = "";
+  $("manualHires").value = "";
+  $("manualClass").value = "";
+  $("manualStart").value = "";
+  $("manualEnd").value = "";
+  $("adjustmentStart").value = "";
+  $("adjustmentEnd").value = "";
+  $("logClipButton").disabled = true;
+  $("renamePanel").classList.add("hidden");
+  $("manualVendorStatus").textContent = "";
+  $("adjustmentStatus").textContent = "";
 }
 
 async function logTestClips() {
@@ -546,14 +636,18 @@ async function logTestClips() {
     state.undoSnapshot = { rows: previous, renameRecords: [] };
     state.renameRecords = [];
     const data = rows.map((item) => {
-      const vendor = vendorFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
+      const overrides = state.manualOverrides[item.row] || {};
+      const vendor = overrides.F ?? vendorFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
       const description = descriptionFromSourceLink(item.sourceLink) || item.alamyMetadata?.description || descriptionFromFileName(item.file.name);
-      const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
+      const archivalClass = overrides.L ?? archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
       return [
         { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.sourceName]] },
         { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.type]] },
         ...(vendor ? [{ range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[vendor]] }] : []),
+        ...(overrides.H !== undefined ? [{ range: quoteSheetName("TAPE LOG") + "!H" + item.row, values: [[overrides.H]] }] : []),
+        ...(overrides.I !== undefined ? [{ range: quoteSheetName("TAPE LOG") + "!I" + item.row, values: [[overrides.I]] }] : []),
         ...(description ? [{ range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[description]] }] : []),
+        ...(overrides.K !== undefined ? [{ range: quoteSheetName("TAPE LOG") + "!K" + item.row, values: [[overrides.K]] }] : []),
         ...(archivalClass ? [{ range: quoteSheetName("TAPE LOG") + "!L" + item.row, values: [[archivalClass]] }] : []),
       ];
     }).flat();
@@ -577,7 +671,7 @@ async function logTestClips() {
 }
 
 async function readTrackerValues(rows) {
-  const columns = ["D", "F", "J", "L", "M"];
+  const columns = ["D", "F", "H", "I", "J", "K", "L", "M"];
   const response = await gapi.client.sheets.spreadsheets.values.batchGet({
     spreadsheetId: state.spreadsheetId,
     ranges: rows.flatMap((row) => columns.map((column) => quoteSheetName("TAPE LOG") + "!" + column + row.row)),
@@ -597,9 +691,12 @@ async function undoLastLog() {
     const data = state.undoSnapshot.rows.flatMap((item) => [
       { range: quoteSheetName("TAPE LOG") + "!D" + item.row, values: [[item.values[0]]] },
       { range: quoteSheetName("TAPE LOG") + "!F" + item.row, values: [[item.values[1]]] },
-      { range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[item.values[2]]] },
-      { range: quoteSheetName("TAPE LOG") + "!L" + item.row, values: [[item.values[3]]] },
-      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.values[4]]] },
+      { range: quoteSheetName("TAPE LOG") + "!H" + item.row, values: [[item.values[2]]] },
+      { range: quoteSheetName("TAPE LOG") + "!I" + item.row, values: [[item.values[3]]] },
+      { range: quoteSheetName("TAPE LOG") + "!J" + item.row, values: [[item.values[4]]] },
+      { range: quoteSheetName("TAPE LOG") + "!K" + item.row, values: [[item.values[5]]] },
+      { range: quoteSheetName("TAPE LOG") + "!L" + item.row, values: [[item.values[6]]] },
+      { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.values[7]]] },
     ]);
     await gapi.client.sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: state.spreadsheetId,
@@ -776,6 +873,7 @@ window.addEventListener("load", () => {
     }
   });
   $("signOutButton").addEventListener("click", disconnect);
+  $("resetSourceButton").addEventListener("click", resetSourceFolder);
   $("chooseSourceButton").addEventListener("click", async () => {
     if (!window.showDirectoryPicker) {
       $("sourceFolderName").textContent = "Direct renaming requires Chrome or Edge.";
@@ -799,6 +897,9 @@ window.addEventListener("load", () => {
     });
   });
   $("applyManualVendorButton").addEventListener("click", applyManualVendor);
+  document.querySelectorAll("[data-adjustment]").forEach((button) => {
+    button.addEventListener("click", () => applyTrackerAdjustment(button.dataset.adjustment));
+  });
   $("logClipButton").addEventListener("click", logTestClips);
   $("renameButton").addEventListener("click", renameLoggedFiles);
   $("undoButton").addEventListener("click", undoLastLog);

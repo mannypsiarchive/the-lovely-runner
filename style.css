@@ -451,8 +451,9 @@ button.tool-card { cursor: pointer; font: inherit; }
 
 .clip-preview-table td:nth-child(1),
 .clip-preview-table td:nth-child(2),
-.clip-preview-table td:nth-child(6),
-.clip-preview-table td:nth-child(7) {
+.clip-preview-table td:nth-child(8),
+.clip-preview-table td:nth-child(9),
+.clip-preview-table td:nth-child(10) {
   text-align: center;
 }
 
@@ -469,6 +470,52 @@ button.tool-card { cursor: pointer; font: inherit; }
 
 .folder-button {
   width: 100%;
+}
+
+.reset-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.manual-adjustments-panel {
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(10, 16, 35, .34);
+}
+
+.manual-adjustments-panel h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.adjustment-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 170px auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.adjustment-row label {
+  margin: 0;
+  font-size: 14px;
+}
+
+.adjustment-row input,
+.adjustment-row select,
+.manual-adjustment-range input {
+  min-height: 42px;
+  background: #ffffff;
+  color: #17203a;
+}
+
+.manual-adjustment-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
 }
 
 .rename-panel {
@@ -694,6 +741,8 @@ input:focus, select:focus {
   .tool-grid { grid-template-columns: 1fr; }
   .review-actions .button { flex: 1 1 200px; }
   .tracker-details, .logger-test-grid { grid-template-columns: 1fr; }
+  .adjustment-row { grid-template-columns: 1fr; }
+  .manual-adjustment-range { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 721px) and (max-width: 980px) {

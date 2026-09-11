@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
-        <h1>Archival Logging Helper <span class="version-tag">1.15</span></h1>
+        <h1>Archival Logging Helper <span class="version-tag">1.16</span></h1>
         <p>Connect Archival Tracker, Batch Log and Rename Archival Files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
@@ -69,6 +69,7 @@
         <div class="field">
           <label for="clipFolder">Source Folder</label>
           <button class="button secondary folder-button" id="chooseSourceButton" type="button">Choose Source Folder</button>
+          <button class="button ghost reset-button" id="resetSourceButton" type="button">Reset</button>
           <div class="logger-status" id="sourceFolderName" aria-live="polite">No source folder selected.</div>
         </div>
         <div class="field">
@@ -88,9 +89,8 @@
       <div class="manual-source-panel">
         <div class="field">
           <label for="manualVendor">Choose Manual Vendor/Source</label>
-          <select id="manualVendor" disabled>
-            <option value="">Connect a tracker to load Column F sources</option>
-          </select>
+          <input id="manualVendor" list="manualVendorOptions" placeholder="Type to search Column F sources" disabled>
+          <datalist id="manualVendorOptions"></datalist>
         </div>
         <p class="manual-source-note">Archival Logger will auto-generate source for Getty, Alamy, Pond5, and Shutterstock. Only use this for other Sources.</p>
         <div class="manual-source-options">
@@ -103,6 +103,40 @@
         </div>
         <button class="button secondary" id="applyManualVendorButton" disabled>Apply Manual Source</button>
         <div class="logger-status" id="manualVendorStatus" aria-live="polite"></div>
+      </div>
+
+      <div class="manual-adjustments-panel">
+        <h3>Manual Tracker Adjustments</h3>
+        <p class="manual-source-note">Use these fields to add or correct information before completing the tracker manually.</p>
+        <div class="adjustment-row">
+          <label for="manualEpisode">Episode/Segment (H)</label>
+          <input id="manualEpisode" type="text" placeholder="Optional episode or segment">
+          <select id="manualEpisodeMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <button class="button secondary" data-adjustment="episode">Apply</button>
+        </div>
+        <div class="adjustment-row">
+          <label for="manualDescription">File Description (I)</label>
+          <input id="manualDescription" type="text" placeholder="Optional file description">
+          <select id="manualDescriptionMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <button class="button secondary" data-adjustment="description">Apply</button>
+        </div>
+        <div class="adjustment-row">
+          <label for="manualHires">HIRES (K)</label>
+          <select id="manualHires" disabled><option value="">Connect a tracker to load Column K values</option></select>
+          <select id="manualHiresMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <button class="button secondary" data-adjustment="hires">Apply</button>
+        </div>
+        <div class="adjustment-row">
+          <label for="manualClass">Archival Class (L)</label>
+          <select id="manualClass" disabled><option value="">Connect a tracker to load Column L values</option></select>
+          <select id="manualClassMode"><option value="batch">All in Current Range</option><option value="range">ARC Range</option></select>
+          <button class="button secondary" data-adjustment="class">Apply</button>
+        </div>
+        <div class="manual-adjustment-range">
+          <div class="field"><label for="adjustmentStart">Adjustment ARC Start</label><input id="adjustmentStart" type="number" min="0" step="1" placeholder="Start ARC"></div>
+          <div class="field"><label for="adjustmentEnd">Adjustment ARC End</label><input id="adjustmentEnd" type="number" min="0" step="1" placeholder="End ARC"></div>
+        </div>
+        <div class="logger-status" id="adjustmentStatus" aria-live="polite"></div>
       </div>
 
       <div class="logger-status" id="clipSelectionStatus" aria-live="polite">Choose a source folder containing one or more clips.</div>
