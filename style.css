@@ -612,6 +612,26 @@ input[type="text"], input[type="file"], select {
   color-scheme: light;
 }
 
+.logger-card select,
+.logger-card select:focus,
+.logger-card select:active,
+.logger-card select:disabled {
+  background-color: #ffffff !important;
+  color: #17203a !important;
+  color-scheme: light;
+  border-color: #c7cedf !important;
+  opacity: 1;
+}
+
+.logger-card select option,
+.logger-card select option:checked,
+.logger-card select option:hover,
+.logger-card select option:focus {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #17203a !important;
+}
+
 .logger-card input:not([type="radio"])::placeholder {
   color: #68718c;
 }
