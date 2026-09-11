@@ -472,6 +472,17 @@ button.tool-card { cursor: pointer; font: inherit; }
   width: 100%;
 }
 
+.logger-warning {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 190, 92, .55);
+  border-radius: 10px;
+  background: rgba(255, 190, 92, .12);
+  color: #ffd58d;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .reset-button {
   width: 100%;
   margin-top: 8px;

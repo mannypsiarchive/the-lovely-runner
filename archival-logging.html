@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
-        <h1>Archival Logging Helper <span class="version-tag">1.19</span></h1>
+        <h1>Archival Logging Helper <span class="version-tag">1.21</span></h1>
         <p>Connect Archival Tracker, Batch Log and Rename Archival Files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
@@ -71,6 +71,7 @@
           <button class="button secondary folder-button" id="chooseSourceButton" type="button">Choose Source Folder</button>
           <button class="button ghost reset-button" id="resetSourceButton" type="button">Reset</button>
           <div class="logger-status" id="sourceFolderName" aria-live="polite">No source folder selected.</div>
+          <div class="logger-warning hidden" id="sourceFolderWarning" role="alert"></div>
         </div>
         <div class="field">
           <label for="arcStart">ARC Number Start</label>

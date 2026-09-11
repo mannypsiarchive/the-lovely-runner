@@ -1,4 +1,5 @@
-const LOGGER_BUILD = "1.19";
+const LOGGER_BUILD = "1.21";
+const MAX_BATCH_FILES = 200;
 
 /*
   Google Sheets connection for The Lovely Runner.
@@ -69,7 +70,7 @@ function initializeGoogle() {
       state.gapiReady = true;
       maybeEnableConnection();
     } catch (error) {
-      setStatus("Google API setup error: " + error.message, "error");
+      setStatus("Google API setup error: " + getErrorMessage(error), "error");
     }
   });
 
@@ -164,7 +165,7 @@ async function loadTracker() {
     if (state.clipFiles.length) updateClipPreview();
     setStatus("Connected", "connected");
   } catch (error) {
-    setStatus("Could not read this sheet: " + error.message, "error");
+    setStatus("Could not read this sheet: " + getErrorMessage(error), "error");
     $("trackerCard").classList.add("hidden");
     $("clipLogCard").classList.add("hidden");
   }
@@ -334,12 +335,16 @@ function alamyLinkMatchesFile(sourceLink, linkedId, entry) {
 
 async function readSourceLinks(rows) {
   if (!state.spreadsheetId || !rows.length) return rows.map((row) => ({ ...row, sourceLink: "" }));
-  const response = await gapi.client.sheets.spreadsheets.values.batchGet({
-    spreadsheetId: state.spreadsheetId,
-    ranges: rows.map((item) => quoteSheetName("TAPE LOG") + "!O" + item.row),
-    valueRenderOption: "FORMULA",
-  });
-  const valueRanges = response.result.valueRanges || [];
+  const valueRanges = [];
+  for (let offset = 0; offset < rows.length; offset += 25) {
+    const rowChunk = rows.slice(offset, offset + 25);
+    const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+      spreadsheetId: state.spreadsheetId,
+      ranges: rowChunk.map((item) => quoteSheetName("TAPE LOG") + "!O" + item.row),
+      valueRenderOption: "FORMULA",
+    });
+    valueRanges.push(...(response.result.valueRanges || []));
+  }
   return rows.map((row, index) => ({
     ...row,
     sourceLink: valueRanges[index]?.values?.[0]?.[0] || "",
@@ -453,6 +458,19 @@ async function updateClipPreview() {
     $("logClipButton").disabled = true;
     return;
   }
+  const folderWarning = $("sourceFolderWarning");
+  if (files.length > MAX_BATCH_FILES) {
+    if (folderWarning) {
+      folderWarning.textContent = "This source folder contains " + files.length + " files. The recommended maximum is " + MAX_BATCH_FILES + " files per batch. Please choose a smaller folder before logging.";
+      folderWarning.classList.remove("hidden");
+    }
+    $("clipSelectionStatus").textContent = "Batch paused: reduce the source folder to " + MAX_BATCH_FILES + " files or fewer.";
+    preview.innerHTML = "";
+    preview.classList.add("hidden");
+    $("logClipButton").disabled = true;
+    return;
+  }
+  if (folderWarning) folderWarning.classList.add("hidden");
   if (!/^\d+$/.test(startValue) || start < 0) {
     $("clipSelectionStatus").textContent = "Enter the ARC number to start at.";
     preview.classList.add("hidden");
@@ -534,15 +552,12 @@ async function applyManualVendor() {
       range: quoteSheetName("TAPE LOG") + "!F" + row.row,
       values: [[vendor]],
     }));
-    await gapi.client.sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: state.spreadsheetId,
-      resource: { valueInputOption: "USER_ENTERED", data },
-    });
+    await batchUpdateSheetValues(data);
     rows.forEach((row) => { state.manualOverrides[row.row] = { ...(state.manualOverrides[row.row] || {}), F: vendor }; });
     if (mode === "batch") await updateClipPreview();
     $("manualVendorStatus").textContent = "Applied " + vendor + " to " + rows.length + " row" + (rows.length === 1 ? "" : "s") + ".";
   } catch (error) {
-    $("manualVendorStatus").textContent = "Manual source update failed: " + error.message;
+    $("manualVendorStatus").textContent = "Manual source update failed: " + getErrorMessage(error);
   } finally {
     $("applyManualVendorButton").disabled = false;
   }
@@ -582,15 +597,12 @@ async function applyTrackerAdjustment(type) {
       range: quoteSheetName("TAPE LOG") + "!" + config.column + row.row,
       values: [[value]],
     }));
-    await gapi.client.sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: state.spreadsheetId,
-      resource: { valueInputOption: "USER_ENTERED", data },
-    });
+    await batchUpdateSheetValues(data);
     rows.forEach((row) => { state.manualOverrides[row.row] = { ...(state.manualOverrides[row.row] || {}), [config.column]: value }; });
     if (mode === "batch") await updateClipPreview();
     $("adjustmentStatus").textContent = "Applied " + value + " to " + rows.length + " row" + (rows.length === 1 ? "" : "s") + " in Column " + config.column + ".";
   } catch (error) {
-    $("adjustmentStatus").textContent = "Adjustment failed: " + error.message;
+    $("adjustmentStatus").textContent = "Adjustment failed: " + getErrorMessage(error);
   }
 }
 
@@ -600,6 +612,8 @@ function resetSourceFolder() {
   state.clipRows = [];
   state.manualOverrides = {};
   $("sourceFolderName").textContent = "No source folder selected.";
+  $("sourceFolderWarning").textContent = "";
+  $("sourceFolderWarning").classList.add("hidden");
   $("clipSelectionStatus").textContent = "Choose a source folder containing one or more clips.";
   $("clipPreview").innerHTML = "";
   $("clipPreview").classList.add("hidden");
@@ -653,30 +667,30 @@ async function logTestClips() {
     }).flat();
     $("logClipButton").disabled = true;
     $("clipWriteStatus").textContent = "Writing " + state.clipFiles.length + " test row" + (state.clipFiles.length === 1 ? "" : "s") + " to TAPE LOG…";
-    await gapi.client.sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: state.spreadsheetId,
-      resource: {
-        valueInputOption: "USER_ENTERED",
-        data,
-      },
+    await batchUpdateSheetValues(data, (completed, total) => {
+      $("clipWriteStatus").textContent = "Writing batch " + completed + " of " + total + " to TAPE LOG…";
     });
     $("clipWriteStatus").textContent = "Success. Wrote source filename(s), footage/still type, vendor, archival class, and link/filename description to TAPE LOG.";
     $("renamePanel").classList.remove("hidden");
     $("renameButton").disabled = false;
     $("undoButton").disabled = false;
   } catch (error) {
-    $("clipWriteStatus").textContent = "Write failed: " + error.message;
+    $("clipWriteStatus").textContent = "Write failed: " + getErrorMessage(error);
     $("logClipButton").disabled = false;
   }
 }
 
 async function readTrackerValues(rows) {
   const columns = ["D", "F", "H", "I", "J", "K", "L", "M"];
-  const response = await gapi.client.sheets.spreadsheets.values.batchGet({
-    spreadsheetId: state.spreadsheetId,
-    ranges: rows.flatMap((row) => columns.map((column) => quoteSheetName("TAPE LOG") + "!" + column + row.row)),
-  });
-  const values = response.result.valueRanges || [];
+  const values = [];
+  for (let offset = 0; offset < rows.length; offset += 25) {
+    const rowChunk = rows.slice(offset, offset + 25);
+    const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+      spreadsheetId: state.spreadsheetId,
+      ranges: rowChunk.flatMap((row) => columns.map((column) => quoteSheetName("TAPE LOG") + "!" + column + row.row)),
+    });
+    values.push(...(response.result.valueRanges || []));
+  }
   return rows.map((row, rowIndex) => ({
     row: row.row,
     values: columns.map((column, columnIndex) => values[rowIndex * columns.length + columnIndex]?.values?.[0]?.[0] || ""),
@@ -698,10 +712,7 @@ async function undoLastLog() {
       { range: quoteSheetName("TAPE LOG") + "!L" + item.row, values: [[item.values[6]]] },
       { range: quoteSheetName("TAPE LOG") + "!M" + item.row, values: [[item.values[7]]] },
     ]);
-    await gapi.client.sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: state.spreadsheetId,
-      resource: { valueInputOption: "USER_ENTERED", data },
-    });
+    await batchUpdateSheetValues(data);
     for (const record of state.renameRecords) {
       const renamed = await record.parentHandle.getFileHandle(record.newName);
       const originalFile = await renamed.getFile();
@@ -715,17 +726,21 @@ async function undoLastLog() {
     $("renameButton").disabled = true;
     state.undoSnapshot = null;
   } catch (error) {
-    $("renameStatus").textContent = "Undo failed: " + error.message;
+    $("renameStatus").textContent = "Undo failed: " + getErrorMessage(error);
     $("undoButton").disabled = false;
   }
 }
 
 async function readFinalNames(rows) {
-  const response = await gapi.client.sheets.spreadsheets.values.batchGet({
-    spreadsheetId: state.spreadsheetId,
-    ranges: rows.map((item) => quoteSheetName("TAPE LOG") + "!B" + item.row),
-  });
-  const valueRanges = response.result.valueRanges || [];
+  const valueRanges = [];
+  for (let offset = 0; offset < rows.length; offset += 25) {
+    const rowChunk = rows.slice(offset, offset + 25);
+    const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+      spreadsheetId: state.spreadsheetId,
+      ranges: rowChunk.map((item) => quoteSheetName("TAPE LOG") + "!B" + item.row),
+    });
+    valueRanges.push(...(response.result.valueRanges || []));
+  }
   return rows.map((row, index) => ({
     ...row,
     finalName: valueRanges[index]?.values?.[0]?.[0]?.trim() || "",
@@ -810,7 +825,7 @@ async function renameLoggedFiles() {
 
     $("renameStatus").textContent = results.join("\n");
   } catch (error) {
-    $("renameStatus").textContent = "Rename failed: " + error.message;
+    $("renameStatus").textContent = "Rename failed: " + getErrorMessage(error);
     $("renameButton").disabled = false;
   }
 }
@@ -831,7 +846,7 @@ async function writeTestValue() {
     });
     setWriteStatus("Write successful: " + tab + "!" + cell, "success");
   } catch (error) {
-    setWriteStatus("Write failed: " + error.message, "error");
+    setWriteStatus("Write failed: " + getErrorMessage(error), "error");
   }
 }
 
@@ -845,6 +860,26 @@ function disconnect() {
   $("signOutButton").disabled = true;
   setStatus("Disconnected");
   setWriteStatus("");
+}
+
+async function batchUpdateSheetValues(data, onProgress) {
+  const batchSize = 100;
+  const totalBatches = Math.max(1, Math.ceil(data.length / batchSize));
+  for (let offset = 0; offset < data.length; offset += batchSize) {
+    await gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: state.spreadsheetId,
+      resource: {
+        valueInputOption: "USER_ENTERED",
+        data: data.slice(offset, offset + batchSize),
+      },
+    });
+    if (onProgress) onProgress(Math.floor(offset / batchSize) + 1, totalBatches);
+  }
+}
+
+function getErrorMessage(error) {
+  return error?.result?.error?.message || error?.body?.error?.message || error?.message ||
+    (typeof error === "string" ? error : "Google Sheets returned an unspecified error.");
 }
 
 function quoteSheetName(name) {
@@ -869,7 +904,7 @@ window.addEventListener("load", () => {
       parseSheetUrl($("sheetUrl").value);
       requestGoogleAccess();
     } catch (error) {
-      setStatus(error.message, "error");
+      setStatus(getErrorMessage(error), "error");
     }
   });
   $("signOutButton").addEventListener("click", disconnect);
@@ -886,7 +921,7 @@ window.addEventListener("load", () => {
       $("sourceFolderName").textContent = directoryHandle.name + " selected · " + state.clipFiles.length + " file" + (state.clipFiles.length === 1 ? "" : "s") + " found.";
       await updateClipPreview();
     } catch (error) {
-      if (error.name !== "AbortError") $("sourceFolderName").textContent = "Could not read source folder: " + error.message;
+      if (error.name !== "AbortError") $("sourceFolderName").textContent = "Could not read source folder: " + getErrorMessage(error);
     }
   });
   $("arcStart").value = "";
