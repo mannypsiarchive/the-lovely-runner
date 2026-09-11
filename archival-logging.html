@@ -11,8 +11,8 @@
     <header class="hero">
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
-        <h1>Archival Logging Helper <span class="version-tag">1.13</span></h1>
-        <p>Connect a tracker, then log and rename a batch of archival files.</p>
+        <h1>Archival Logging Helper <span class="version-tag">1.15</span></h1>
+        <p>Connect Archival Tracker, Batch Log and Rename Archival Files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
     </header>
@@ -21,7 +21,7 @@
       <div class="logger-heading">
         <div>
           <div class="eyebrow">STEP 01</div>
-          <h2>Connect your tracker</h2>
+          <h2>Connect Archival Tracker</h2>
           <p>Paste the Google Sheet link that contains the show’s archival log.</p>
         </div>
         <div class="connection-dot" id="connectionDot"></div>
@@ -46,7 +46,7 @@
       <div class="logger-heading">
         <div>
           <div class="eyebrow">STEP 02</div>
-          <h2>Tracker connection</h2>
+          <h2>Tracker Activated</h2>
           <p id="trackerSummary">Connected tracker details will appear here.</p>
         </div>
       </div>
@@ -59,11 +59,12 @@
       <div class="logger-heading">
         <div>
           <div class="eyebrow">STEP 03</div>
-          <h2>Test source-folder logging</h2>
-          <p>Select a source folder containing one or more clips. Lovely Runner will check Column O first, then filenames, and write the matched information to <strong>TAPE LOG</strong>.</p>
+          <h2>Source Folder Batch Logging</h2>
+          <p>Select source folder containing one or more archival assets. Archival Logger will extract usable metadata from Source Links and/or Physical File information. User can also manually add data.</p>
         </div>
       </div>
 
+      <h3 class="source-folder-heading">Select Source Folder</h3>
       <div class="logger-test-grid">
         <div class="field">
           <label for="clipFolder">Source Folder</label>
@@ -74,6 +75,34 @@
           <label for="arcStart">ARC Number Start</label>
           <input id="arcStart" type="number" min="0" step="1" placeholder="e.g. 2530" autocomplete="off" value="">
         </div>
+        <div class="field">
+          <label for="assetCount">Number of Assets</label>
+          <input id="assetCount" class="calculated-field" type="number" readonly value="0">
+        </div>
+        <div class="field">
+          <label for="arcFinish">ARC Number Finish</label>
+          <input id="arcFinish" class="calculated-field" type="number" readonly value="">
+        </div>
+      </div>
+
+      <div class="manual-source-panel">
+        <div class="field">
+          <label for="manualVendor">Choose Manual Vendor/Source</label>
+          <select id="manualVendor" disabled>
+            <option value="">Connect a tracker to load Column F sources</option>
+          </select>
+        </div>
+        <p class="manual-source-note">Archival Logger will auto-generate source for Getty, Alamy, Pond5, and Shutterstock. Only use this for other Sources.</p>
+        <div class="manual-source-options">
+          <label><input type="radio" name="manualApplyMode" value="batch" checked> Apply Source to All in Current Range</label>
+          <label><input type="radio" name="manualApplyMode" value="range"> Apply Source to ARC Range</label>
+        </div>
+        <div class="manual-range-grid hidden" id="manualRangeFields">
+          <div class="field"><label for="manualStart">Manual ARC Start</label><input id="manualStart" type="number" min="0" step="1" placeholder="Start ARC"></div>
+          <div class="field"><label for="manualEnd">Manual ARC End</label><input id="manualEnd" type="number" min="0" step="1" placeholder="End ARC"></div>
+        </div>
+        <button class="button secondary" id="applyManualVendorButton" disabled>Apply Manual Source</button>
+        <div class="logger-status" id="manualVendorStatus" aria-live="polite"></div>
       </div>
 
       <div class="logger-status" id="clipSelectionStatus" aria-live="polite">Choose a source folder containing one or more clips.</div>

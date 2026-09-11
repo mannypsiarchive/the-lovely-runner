@@ -44,6 +44,13 @@ button { cursor: pointer; }
   padding: 0 4px;
 }
 
+.hero > div:first-child { min-width: 0; }
+
+.hero h1 {
+  line-height: 1.05;
+  padding-bottom: 5px;
+}
+
 .version-tag {
   display: inline-block;
   margin-left: 8px;
@@ -267,6 +274,61 @@ button.tool-card { cursor: pointer; font: inherit; }
   line-height: 1.5;
 }
 
+.source-folder-heading {
+  margin: 0 0 16px;
+  color: #f4f7ff;
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.calculated-field {
+  background: #d9deea !important;
+  color: #68718c !important;
+  cursor: not-allowed;
+}
+
+.manual-source-panel {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(10, 16, 35, .34);
+}
+
+.manual-source-panel .field { margin-bottom: 14px; }
+
+.manual-source-note {
+  margin: 4px 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.manual-source-options {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: #d8def3;
+  font-size: 14px;
+}
+
+.manual-source-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.manual-range-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+#manualVendorStatus { margin-top: 12px; }
+
 .connection-dot {
   width: 13px;
   height: 13px;
@@ -470,6 +532,8 @@ input[type="text"], input[type="file"], select {
 
 /* Keep the Google Sheet URL readable against the dark site design. */
 #sheetUrl {
+  width: 100%;
+  min-height: 48px;
   background: #ffffff;
   color: #17203a;
 }

@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.13";
+const LOGGER_BUILD = "1.15";
 
 /*
   Google Sheets connection for The Lovely Runner.
@@ -25,6 +25,7 @@ const state = {
   sourceDirectoryHandle: null,
   undoSnapshot: null,
   renameRecords: [],
+  manualVendors: [],
 };
 
 function setStatus(message, kind = "") {
@@ -83,6 +84,23 @@ function maybeEnableConnection() {
   $("connectButton").disabled = !(state.gapiReady && state.gisReady);
 }
 
+async function loadManualVendors() {
+  const select = $("manualVendor");
+  if (!select || !state.spreadsheetId) return;
+  const response = await gapi.client.sheets.spreadsheets.values.get({
+    spreadsheetId: state.spreadsheetId,
+    range: quoteSheetName("TAPE LOG") + "!F:F",
+  });
+  const values = (response.result.values || []).flat()
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  state.manualVendors = [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  select.innerHTML = '<option value="">Choose a source</option>' +
+    state.manualVendors.map((vendor) => '<option value="' + escapeAttribute(vendor) + '">' + escapeHtml(vendor) + '</option>').join("");
+  select.disabled = false;
+  $("applyManualVendorButton").disabled = false;
+}
+
 function requestGoogleAccess() {
   if (!state.tokenClient) {
     setStatus("Google sign-in is still loading. Please try again in a moment.", "working");
@@ -118,6 +136,7 @@ async function loadTracker() {
 
     state.spreadsheetTitle = response.result.properties.title;
     state.tabs = response.result.sheets.map((sheet) => sheet.properties);
+    await loadManualVendors();
     $("trackerSummary").textContent = state.spreadsheetTitle + " is connected with read/write authorization.";
     const trackerDetails = $("trackerDetails");
     if (trackerDetails) {
@@ -412,6 +431,7 @@ async function updateClipPreview() {
   const start = Number(startValue);
   const preview = $("clipPreview");
   const files = state.clipFiles;
+  updateAssetRangeFields(files.filter((file) => classifyClip(file.name)).length, startValue);
 
   if (!files.length) {
     $("clipSelectionStatus").textContent = "Choose a source folder containing one or more clips.";
@@ -434,6 +454,7 @@ async function updateClipPreview() {
   }));
   const unsupported = allRows.filter((item) => !item.type).length;
   const rows = allRows.filter((item) => item.type);
+  updateAssetRangeFields(rows.length, startValue);
   state.clipFiles = rows.map((item) => item.file);
   const adjustedRows = await prepareClipRows();
   state.clipRows = adjustedRows;
@@ -456,6 +477,57 @@ async function updateClipPreview() {
   }).join("") + '</tbody></table>';
   preview.classList.toggle("hidden", !adjustedRows.length);
   $("logClipButton").disabled = !adjustedRows.length;
+}
+
+function updateAssetRangeFields(count, startValue) {
+  const countField = $("assetCount");
+  const finishField = $("arcFinish");
+  if (countField) countField.value = count || 0;
+  if (finishField) {
+    const start = Number(startValue);
+    finishField.value = /^\d+$/.test(String(startValue)) && count > 0 ? start + count - 1 : "";
+  }
+}
+
+async function applyManualVendor() {
+  const vendor = $("manualVendor").value.trim();
+  if (!vendor) {
+    $("manualVendorStatus").textContent = "Choose a Vendor/Source first.";
+    return;
+  }
+  const mode = document.querySelector('input[name="manualApplyMode"]:checked')?.value || "batch";
+  let rows;
+  if (mode === "batch") {
+    rows = state.clipRows?.length ? state.clipRows : getClipRows();
+  } else {
+    const start = Number($("manualStart").value);
+    const end = Number($("manualEnd").value);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+      $("manualVendorStatus").textContent = "Enter a valid Manual ARC Start and Manual ARC End.";
+      return;
+    }
+    rows = Array.from({ length: end - start + 1 }, (_, index) => ({ row: start + index + 1 }));
+  }
+  if (!rows.length) {
+    $("manualVendorStatus").textContent = "Choose a Source Folder or enter an ARC range first.";
+    return;
+  }
+  try {
+    $("applyManualVendorButton").disabled = true;
+    const data = rows.map((row) => ({
+      range: quoteSheetName("TAPE LOG") + "!F" + row.row,
+      values: [[vendor]],
+    }));
+    await gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: state.spreadsheetId,
+      resource: { valueInputOption: "USER_ENTERED", data },
+    });
+    $("manualVendorStatus").textContent = "Applied " + vendor + " to " + rows.length + " row" + (rows.length === 1 ? "" : "s") + ".";
+  } catch (error) {
+    $("manualVendorStatus").textContent = "Manual source update failed: " + error.message;
+  } finally {
+    $("applyManualVendorButton").disabled = false;
+  }
 }
 
 async function logTestClips() {
@@ -721,6 +793,12 @@ window.addEventListener("load", () => {
   });
   $("arcStart").value = "";
   $("arcStart").addEventListener("input", updateClipPreview);
+  document.querySelectorAll('input[name="manualApplyMode"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      $("manualRangeFields").classList.toggle("hidden", radio.value !== "range" || !radio.checked);
+    });
+  });
+  $("applyManualVendorButton").addEventListener("click", applyManualVendor);
   $("logClipButton").addEventListener("click", logTestClips);
   $("renameButton").addEventListener("click", renameLoggedFiles);
   $("undoButton").addEventListener("click", undoLastLog);
