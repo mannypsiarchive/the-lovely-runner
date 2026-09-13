@@ -26,7 +26,7 @@
         <div>
           <div class="eyebrow">STEP 01</div>
           <h2>Select Fair Use Log</h2>
-          <p>Choose a partially completed Fair Use Log from your computer or select one from Google Drive. Rows with both <strong>Dst In</strong> and <strong>Dst Out</strong> timecodes will receive midpoint screenshots.</p>
+          <p>Enter Time Codes, Duration and Sources of All Fair Use Material in Program. Fair Use Log will Generate Screenshots and Due Diligence Logs of Material.</p>
         </div>
       </div>
       <div class="field">
@@ -34,12 +34,9 @@
         <input id="logFile" type="file" accept=".xlsx">
       </div>
       <div class="or-divider"><span>OR</span></div>
-      <div class="actions">
-        <button class="button secondary" id="chooseDriveLogButton" type="button">Choose a Fair Use Log from Google Drive</button>
-      </div>
-      <div class="field hidden" id="driveLogField">
-        <label for="driveLogFile">Google Drive Fair Use Logs</label>
-        <select id="driveLogFile"><option value="">Choose a Google Drive file</option></select>
+      <div class="field">
+        <label for="driveSheetUrl">Choose a Fair Use Log from Google Drive</label>
+        <input id="driveSheetUrl" type="url" placeholder="Paste the Google Sheet URL here" autocomplete="off">
       </div>
       <div class="logger-status" id="selectedLogStatus" aria-live="polite">No Fair Use Log selected.</div>
       <div class="form-grid">

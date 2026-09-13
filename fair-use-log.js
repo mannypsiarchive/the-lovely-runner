@@ -8,7 +8,7 @@ const GOOGLE_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.goo
 const GOOGLE_API_KEY = "AIzaSyCh8ia27PwiWJkPCypoUyvj5TD8YJVjJSc";
 const SHEETS_DISCOVERY_DOC = "https://sheets.googleapis.com/$discovery/rest?version=v4";
 const DRIVE_DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 
 function setStatus(text, percent = null) {
   $("statusPill").textContent = text;
@@ -100,7 +100,11 @@ function addScreenshot(worksheet, rowNumber, bytes) {
 }
 
 async function createLog() {
-  const logFile = state.selectedLogFile || $("logFile").files[0];
+  let logFile = state.selectedLogFile || $("logFile").files[0];
+  if (!logFile && $("driveSheetUrl").value.trim()) {
+    await useDriveSheet();
+    logFile = state.selectedLogFile;
+  }
   const videoFile = $("referenceCut").files[0];
   if (!logFile || !videoFile) throw new Error("Please upload both a Fair Use Log workbook and a reference cut.");
   const fps = Number($("fps").value);
@@ -215,6 +219,46 @@ async function fetchDriveLog(file) {
   return new File([bytes], file.name.replace(/\.xlsx$/i, "") + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
+function parseSheetUrl(value) {
+  const match = String(value || "").match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) throw new Error("Please enter a valid Google Sheet URL.");
+  return match[1];
+}
+
+async function useDriveSheet() {
+  const spreadsheetId = parseSheetUrl($("driveSheetUrl").value);
+  const loadSheet = async () => {
+    $("selectedLogStatus").textContent = "Reading Fair Use Log from Google Drive…";
+    state.selectedLogFile = await fetchDriveLog({
+      id: spreadsheetId,
+      name: "Google Drive Fair Use Log",
+      mimeType: "application/vnd.google-apps.spreadsheet",
+    });
+    $("selectedLogStatus").textContent = "Selected Google Drive Fair Use Log.";
+  };
+
+  if (state.accessToken) {
+    await loadSheet();
+    return;
+  }
+
+  if (!state.driveTokenClient) throw new Error("Google authorization is still loading. Please try again in a moment.");
+  await new Promise((resolve, reject) => {
+    state.driveTokenClient.callback = async (response) => {
+      try {
+        if (response.error) throw new Error(response.error);
+        state.accessToken = response.access_token;
+        gapi.client.setToken({ access_token: state.accessToken });
+        await loadSheet();
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
+    state.driveTokenClient.requestAccessToken({ prompt: gapi.client.getToken() ? "" : "consent" });
+  });
+}
+
 async function createDriveTemplate() {
   const folderId = $("driveFolder").value; if (!folderId) throw new Error("Choose a Google Drive folder first.");
   const title = `AEFS - SAMPLE FAIR USE LOG - ${new Date().toISOString().slice(0, 10)}`;
@@ -233,11 +277,9 @@ async function createDriveTemplate() {
 }
 
 $("referenceCut").addEventListener("change", async () => { const file = $("referenceCut").files[0]; if (!file) return; try { await detectVideoMetadata(file); } catch (_) { $("progressText").textContent = "Video selected. Enter the start timecode and frame rate if they could not be detected."; } });
-$("logFile").addEventListener("change", () => { state.selectedLogFile = $("logFile").files[0] || null; if (state.selectedLogFile) { $("selectedLogStatus").textContent = `Selected local Fair Use Log: ${state.selectedLogFile.name}`; $("driveLogField").classList.add("hidden"); } });
+$("logFile").addEventListener("change", () => { state.selectedLogFile = $("logFile").files[0] || null; if (state.selectedLogFile) { $("selectedLogStatus").textContent = `Selected local Fair Use Log: ${state.selectedLogFile.name}`; } });
 $("createButton").addEventListener("click", async () => { try { $("createButton").disabled = true; await createLog(); } catch (error) { setStatus(error.message || String(error), 0); } finally { $("createButton").disabled = false; } });
 $("downloadButton").addEventListener("click", () => downloadBlob(new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "FAIR_USE_GENERATED.xlsx"));
 $("downloadImagesButton").addEventListener("click", downloadImages);
 $("cancelButton").addEventListener("click", () => window.location.reload());
-$("chooseDriveLogButton").addEventListener("click", () => loadDriveLogs().catch((error) => { $("selectedLogStatus").textContent = error.message || String(error); }));
-$("driveLogFile").addEventListener("change", async () => { if (!$("driveLogFile").value) return; try { const file = JSON.parse($("driveLogFile").value); state.selectedLogFile = await fetchDriveLog(file); $("selectedLogStatus").textContent = `Selected Google Drive Fair Use Log: ${file.name}`; } catch (error) { $("selectedLogStatus").textContent = error.message || String(error); } });
 initDrive();
