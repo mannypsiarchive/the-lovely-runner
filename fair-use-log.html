@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fair Use Log · The Lovely Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">FAIR USE WORKFLOW TOOL</div>
+        <h1>Fair Use Log <span class="version-tag">1.0</span></h1>
+        <p>Create midpoint screenshots locally and prepare a review workbook.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="button ghost back-home" href="index.html">← All tools</a>
+        <div class="status-pill" id="statusPill">Ready</div>
+      </div>
+    </header>
+
+    <section class="card logger-card">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">TEMPLATE</div>
+          <h2>Start with a Fair Use Log</h2>
+          <p>The template is only a starting point. You must upload a partially completed workbook containing timecode ranges before screenshots can be generated.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="button secondary" href="AEFS%20-%20SAMPLE%20FAIR%20USE%20LOG.xlsx" download>Download Sample Excel Template</a>
+        <button class="button secondary" id="signInButton" type="button">Create Template in Google Drive</button>
+      </div>
+      <div class="field hidden" id="driveFolderField">
+        <label for="driveFolder">Choose a Google Drive folder</label>
+        <select id="driveFolder"><option value="">Choose a folder</option></select>
+        <button class="button primary" id="createDriveTemplateButton" type="button" disabled>Create Google Sheet Template</button>
+      </div>
+      <div class="logger-status" id="driveStatus" aria-live="polite">No Google Drive connection required for local processing.</div>
+    </section>
+
+    <section class="card logger-card">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 01</div>
+          <h2>Upload your completed or partially completed log</h2>
+          <p>Rows with both <strong>Dst In</strong> and <strong>Dst Out</strong> timecodes will receive midpoint screenshots.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="logFile">Fair Use Log workbook</label>
+        <input id="logFile" type="file" accept=".xlsx">
+      </div>
+      <div class="form-grid">
+        <div class="field"><label for="showTitle">Show title</label><input id="showTitle" placeholder="Show title"></div>
+        <div class="field"><label for="episodeTitle">Episode title</label><input id="episodeTitle" placeholder="Episode title"></div>
+        <div class="field"><label for="companyLlc">Company LLC</label><input id="companyLlc" placeholder="Company information"></div>
+        <div class="field"><label for="network">Network</label><input id="network" placeholder="Network"></div>
+        <div class="field"><label for="referenceLink">Reference cut link</label><input id="referenceLink" type="url" placeholder="Optional link to reference cut"></div>
+      </div>
+    </section>
+
+    <section class="card logger-card">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 02</div>
+          <h2>Choose the reference cut</h2>
+          <p>Video processing happens locally in this browser. The reference cut is never uploaded by this tool.</p>
+        </div>
+      </div>
+      <div class="field"><label for="referenceCut">Reference cut</label><input id="referenceCut" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v,.webm"></div>
+      <div class="form-grid">
+        <div class="field"><label for="startTimecode">Start timecode <span class="muted-inline">(auto-detected when possible)</span></label><input id="startTimecode" value="00:00:00:00" placeholder="HH:MM:SS:FF"></div>
+        <div class="field"><label for="fps">Frame rate</label><select id="fps"><option>23.976</option><option>24</option><option>25</option><option>29.97</option><option>30</option><option>50</option><option>59.94</option><option>60</option></select></div>
+      </div>
+      <div class="actions"><button class="button primary" id="createButton" type="button">Create Fair Use Log</button><button class="button secondary" id="cancelButton" type="button">Reset</button></div>
+      <div class="progress" aria-live="polite"><div class="progress-track"><div class="progress-bar" id="progressBar"></div></div><div class="progress-text" id="progressText">Ready</div></div>
+    </section>
+
+    <section class="card logger-card hidden" id="resultsCard">
+      <div class="logger-heading"><div><div class="eyebrow">REVIEW</div><h2 id="resultTitle">Screenshots ready</h2><p id="resultSummary"></p></div></div>
+      <div class="thumbnail-grid" id="thumbnailGrid"></div>
+      <div class="actions"><button class="button primary" id="downloadButton" type="button">Download Generated Excel</button><button class="button secondary" id="downloadImagesButton" type="button">Download Screenshots ZIP</button></div>
+      <div class="logger-status">Review the generated workbook in Excel and make any final screenshot adjustments there. Google Sheet export for the completed log can be added after the local workflow is verified.</div>
+    </section>
+  </main>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script type="module" src="fair-use-log.js"></script>
+</body>
+</html>
