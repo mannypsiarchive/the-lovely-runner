@@ -2,7 +2,7 @@ import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist
 import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js";
 
 const $ = (id) => document.getElementById(id);
-const state = { workbook: null, worksheet: null, outputBuffer: null, images: [], ffmpeg: null, driveTokenClient: null, driveReady: false, gapiReady: false };
+const state = { workbook: null, worksheet: null, outputBuffer: null, images: [], ffmpeg: null, driveTokenClient: null, driveReady: false, gapiReady: false, accessToken: null, selectedLogFile: null };
 
 const GOOGLE_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const GOOGLE_API_KEY = "AIzaSyCh8ia27PwiWJkPCypoUyvj5TD8YJVjJSc";
@@ -100,7 +100,7 @@ function addScreenshot(worksheet, rowNumber, bytes) {
 }
 
 async function createLog() {
-  const logFile = $("logFile").files[0];
+  const logFile = state.selectedLogFile || $("logFile").files[0];
   const videoFile = $("referenceCut").files[0];
   if (!logFile || !videoFile) throw new Error("Please upload both a Fair Use Log workbook and a reference cut.");
   const fps = Number($("fps").value);
@@ -166,14 +166,47 @@ function maybeEnableDrive() { $("signInButton").disabled = !(state.driveReady &&
 async function connectDrive() {
   state.driveTokenClient.callback = async (response) => {
     if (response.error) throw new Error(response.error);
+    state.accessToken = response.access_token;
     gapi.client.setToken({ access_token: response.access_token });
     $("driveFolderField").classList.remove("hidden"); $("driveStatus").textContent = "Loading Drive folders…";
     const response2 = await gapi.client.drive.files.list({ q: "mimeType='application/vnd.google-apps.folder' and trashed=false", pageSize: 100, orderBy: "name", fields: "files(id,name)" });
     const select = $("driveFolder"); select.innerHTML = '<option value="">Choose a folder</option>';
     (response2.result.files || []).forEach((folder) => { const option = document.createElement("option"); option.value = folder.id; option.textContent = folder.name; select.append(option); });
     $("driveStatus").textContent = "Google Drive connected. Choose a destination folder.";
+    await loadDriveLogs();
   };
   state.driveTokenClient.requestAccessToken({ prompt: gapi.client.getToken() ? "" : "consent" });
+}
+
+async function loadDriveLogs() {
+  if (!state.accessToken) return connectDrive();
+  const response = await gapi.client.drive.files.list({
+    q: "trashed=false and (mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType='application/vnd.google-apps.spreadsheet')",
+    pageSize: 100,
+    orderBy: "name",
+    fields: "files(id,name,mimeType,modifiedTime)",
+  });
+  const select = $("driveLogFile");
+  select.innerHTML = '<option value="">Choose a Google Drive file</option>';
+  (response.result.files || []).forEach((file) => {
+    const option = document.createElement("option");
+    option.value = JSON.stringify(file);
+    option.textContent = `${file.name} (${file.mimeType === "application/vnd.google-apps.spreadsheet" ? "Google Sheet" : "Excel"})`;
+    select.append(option);
+  });
+  $("driveLogField").classList.remove("hidden");
+  $("selectedLogStatus").textContent = "Choose a Fair Use Log from the Google Drive list.";
+}
+
+async function fetchDriveLog(file) {
+  const headers = { Authorization: `Bearer ${state.accessToken}` };
+  const url = file.mimeType === "application/vnd.google-apps.spreadsheet"
+    ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}/export?mimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+    : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`;
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(`Google Drive could not provide that file (${response.status}).`);
+  const bytes = await response.arrayBuffer();
+  return new File([bytes], file.name.replace(/\.xlsx$/i, "") + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
 async function createDriveTemplate() {
@@ -194,6 +227,7 @@ async function createDriveTemplate() {
 }
 
 $("referenceCut").addEventListener("change", async () => { const file = $("referenceCut").files[0]; if (!file) return; try { await detectVideoMetadata(file); } catch (_) { $("driveStatus").textContent = "Video selected. Enter the start timecode and frame rate if they could not be detected."; } });
+$("logFile").addEventListener("change", () => { state.selectedLogFile = $("logFile").files[0] || null; if (state.selectedLogFile) { $("selectedLogStatus").textContent = `Selected local Fair Use Log: ${state.selectedLogFile.name}`; $("driveLogField").classList.add("hidden"); } });
 $("createButton").addEventListener("click", async () => { try { $("createButton").disabled = true; await createLog(); } catch (error) { setStatus(error.message || String(error), 0); } finally { $("createButton").disabled = false; } });
 $("downloadButton").addEventListener("click", () => downloadBlob(new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "FAIR_USE_GENERATED.xlsx"));
 $("downloadImagesButton").addEventListener("click", downloadImages);
@@ -201,4 +235,6 @@ $("cancelButton").addEventListener("click", () => window.location.reload());
 $("signInButton").addEventListener("click", () => connectDrive().catch((error) => { $("driveStatus").textContent = error.message || String(error); }));
 $("createDriveTemplateButton").addEventListener("click", () => createDriveTemplate().catch((error) => { $("driveStatus").textContent = error.message || String(error); }));
 $("driveFolder").addEventListener("change", () => { $("createDriveTemplateButton").disabled = !$("driveFolder").value; });
+$("chooseDriveLogButton").addEventListener("click", () => loadDriveLogs().catch((error) => { $("selectedLogStatus").textContent = error.message || String(error); }));
+$("driveLogFile").addEventListener("change", async () => { if (!$("driveLogFile").value) return; try { const file = JSON.parse($("driveLogFile").value); state.selectedLogFile = await fetchDriveLog(file); $("selectedLogStatus").textContent = `Selected Google Drive Fair Use Log: ${file.name}`; } catch (error) { $("selectedLogStatus").textContent = error.message || String(error); } });
 initDrive();

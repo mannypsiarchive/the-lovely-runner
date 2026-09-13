@@ -15,17 +15,18 @@
         <p>Create midpoint screenshots locally and prepare a review workbook.</p>
       </div>
       <div class="hero-actions">
+        <a class="button ghost back-home" href="#templates">Templates</a>
         <a class="button ghost back-home" href="index.html">← All tools</a>
         <div class="status-pill" id="statusPill">Ready</div>
       </div>
     </header>
 
-    <section class="card logger-card">
+    <section class="card logger-card" id="templates">
       <div class="logger-heading">
         <div>
           <div class="eyebrow">TEMPLATE</div>
-          <h2>Start with a Fair Use Log</h2>
-          <p>The template is only a starting point. You must upload a partially completed workbook containing timecode ranges before screenshots can be generated.</p>
+          <h2>Fair Use Log Templates</h2>
+          <p>Download the sample Excel template or create a copy as a Google Sheet in a selected Drive folder.</p>
         </div>
       </div>
       <div class="actions">
@@ -44,14 +45,23 @@
       <div class="logger-heading">
         <div>
           <div class="eyebrow">STEP 01</div>
-          <h2>Upload your completed or partially completed log</h2>
-          <p>Rows with both <strong>Dst In</strong> and <strong>Dst Out</strong> timecodes will receive midpoint screenshots.</p>
+          <h2>Select Fair Use Log</h2>
+          <p>Choose a partially completed Fair Use Log from your computer or select one from Google Drive. Rows with both <strong>Dst In</strong> and <strong>Dst Out</strong> timecodes will receive midpoint screenshots.</p>
         </div>
       </div>
       <div class="field">
-        <label for="logFile">Fair Use Log workbook</label>
+        <label for="logFile">Choose a partially completed Fair Use Log</label>
         <input id="logFile" type="file" accept=".xlsx">
       </div>
+      <div class="or-divider"><span>OR</span></div>
+      <div class="actions">
+        <button class="button secondary" id="chooseDriveLogButton" type="button">Choose a Fair Use Log from Google Drive</button>
+      </div>
+      <div class="field hidden" id="driveLogField">
+        <label for="driveLogFile">Google Drive Fair Use Logs</label>
+        <select id="driveLogFile"><option value="">Choose a Google Drive file</option></select>
+      </div>
+      <div class="logger-status" id="selectedLogStatus" aria-live="polite">No Fair Use Log selected.</div>
       <div class="form-grid">
         <div class="field"><label for="showTitle">Show title</label><input id="showTitle" placeholder="Show title"></div>
         <div class="field"><label for="episodeTitle">Episode title</label><input id="episodeTitle" placeholder="Episode title"></div>
