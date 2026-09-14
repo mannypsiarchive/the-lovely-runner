@@ -1,4 +1,4 @@
-const FAIR_USE_LOG_VERSION = "1.1";
+const FAIR_USE_LOG_VERSION = "1.2";
 const FFmpeg = window.FFmpegWASM?.FFmpeg;
 
 async function fetchFile(file) {
@@ -12,7 +12,7 @@ async function toBlobURL(url, mimeType) {
 }
 
 const $ = (id) => document.getElementById(id);
-const state = { workbook: null, worksheet: null, outputBuffer: null, images: [], ffmpeg: null, driveTokenClient: null, driveReady: false, gapiReady: false, accessToken: null, selectedLogFile: null };
+const state = { workbook: null, worksheet: null, outputBuffer: null, images: [], ffmpeg: null, driveTokenClient: null, driveReady: false, gapiReady: false, accessToken: null, selectedLogFile: null, videoMetadata: null };
 
 document.querySelectorAll("[data-app-version]").forEach((element) => { element.textContent = FAIR_USE_LOG_VERSION; });
 
@@ -23,7 +23,7 @@ const DRIVE_DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/drive/
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 
 function setStatus(text, percent = null) {
-  $("statusPill").textContent = text;
+  $("statusPill").textContent = percent === 0 ? "Error" : text;
   $("progressText").textContent = text;
   if (percent !== null) $("progressBar").style.width = `${Math.max(0, Math.min(100, percent))}%`;
 }
@@ -61,9 +61,12 @@ async function loadFFmpeg() {
   const ffmpeg = new FFmpeg();
   ffmpeg.on("log", ({ message }) => { state.lastProbeLog = `${state.lastProbeLog || ""}\n${message}`; });
   setStatus("Loading local video engine…", 5);
+  const coreBaseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+  const classWorkerURL = await toBlobURL("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js", "text/javascript");
   await ffmpeg.load({
-    coreURL: await toBlobURL("https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js", "text/javascript"),
-    wasmURL: await toBlobURL("https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm", "application/wasm"),
+    classWorkerURL,
+    coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, "text/javascript"),
+    wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, "application/wasm"),
   });
   state.ffmpeg = ffmpeg;
   return ffmpeg;
@@ -72,20 +75,34 @@ async function loadFFmpeg() {
 async function detectVideoMetadata(file) {
   const ffmpeg = await loadFFmpeg();
   const name = `probe-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "_")}`;
-  state.lastProbeLog = "";
   await ffmpeg.writeFile(name, await fetchFile(file));
-  try { await ffmpeg.exec(["-hide_banner", "-i", name]); } catch (_) { /* ffmpeg returns non-zero because there is no output */ }
-  await ffmpeg.deleteFile(name).catch(() => {});
-  const log = state.lastProbeLog || "";
-  const tc = log.match(/(?:timecode|time_code)\s*:\s*(\d{2}:\d{2}:\d{2}:\d{2})/i)?.[1];
-  const fps = log.match(/(\d+(?:\.\d+)?)\s*fps/i)?.[1];
-  if (tc) $("startTimecode").value = tc;
-  if (fps) {
-    const values = [...$("fps").options].map((o) => Number(o.value));
-    const nearest = values.sort((a, b) => Math.abs(a - Number(fps)) - Math.abs(b - Number(fps)))[0];
-    if (nearest) $("fps").value = String(nearest);
+  const output = `${name}.json`;
+  try {
+    await ffmpeg.ffprobe([
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=avg_frame_rate,r_frame_rate,width,height:stream_tags=timecode",
+      "-show_entries", "format=duration:format_tags=timecode",
+      "-of", "json",
+      name,
+      "-o", output,
+    ]);
+    const raw = await ffmpeg.readFile(output, "utf8");
+    const metadata = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
+    const stream = metadata.streams?.[0] || {};
+    const streamTags = stream.tags || {};
+    const formatTags = metadata.format?.tags || {};
+    const rate = stream.avg_frame_rate && stream.avg_frame_rate !== "0/0" ? stream.avg_frame_rate : stream.r_frame_rate;
+    const fps = rate ? Number(rate.split("/")[0]) / Number(rate.split("/")[1]) : null;
+    const startTimecode = streamTags.timecode || formatTags.timecode;
+    if (!startTimecode || !fps || !Number.isFinite(fps)) throw new Error("The video does not contain readable embedded start timecode and frame-rate metadata.");
+    state.videoMetadata = { startTimecode, fps, fpsLabel: fps.toFixed(3).replace(/0+$/, "").replace(/\.$/, ""), width: stream.width, height: stream.height, duration: metadata.format?.duration };
+    $("videoMetadataStatus").textContent = `Detected automatically — Start TC: ${state.videoMetadata.startTimecode} · Frame rate: ${state.videoMetadata.fpsLabel} fps`;
+    return state.videoMetadata;
+  } finally {
+    await ffmpeg.deleteFile(name).catch(() => {});
+    await ffmpeg.deleteFile(output).catch(() => {});
   }
-  return { startTimecode: $("startTimecode").value, fps: Number($("fps").value) };
 }
 
 async function makeScreenshot(file, seconds, index) {
@@ -120,8 +137,9 @@ async function createLog() {
   }
   const videoFile = $("referenceCut").files[0];
   if (!logFile || !videoFile) throw new Error("Please upload both a Fair Use Log workbook and a reference cut.");
-  const fps = Number($("fps").value);
-  const startTc = normalizeTimecode($("startTimecode").value);
+  if (!state.videoMetadata) await detectVideoMetadata(videoFile);
+  const fps = state.videoMetadata.fps;
+  const startTc = normalizeTimecode(state.videoMetadata.startTimecode);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await logFile.arrayBuffer());
   const worksheet = findSheet(workbook);
@@ -289,7 +307,17 @@ async function createDriveTemplate() {
   $("driveStatus").textContent = "Google Sheet template created and opened.";
 }
 
-$("referenceCut").addEventListener("change", async () => { const file = $("referenceCut").files[0]; if (!file) return; try { await detectVideoMetadata(file); } catch (_) { $("progressText").textContent = "Video selected. Enter the start timecode and frame rate if they could not be detected."; } });
+$("referenceCut").addEventListener("change", async () => {
+  const file = $("referenceCut").files[0];
+  state.videoMetadata = null;
+  if (!file) return;
+  $("videoMetadataStatus").textContent = "Detecting embedded start timecode and frame rate…";
+  try {
+    await detectVideoMetadata(file);
+  } catch (error) {
+    $("videoMetadataStatus").textContent = error.message || "Could not detect video metadata.";
+  }
+});
 $("logFile").addEventListener("change", () => { state.selectedLogFile = $("logFile").files[0] || null; if (state.selectedLogFile) { $("selectedLogStatus").textContent = `Selected local Fair Use Log: ${state.selectedLogFile.name}`; } });
 $("createButton").addEventListener("click", async () => { try { $("createButton").disabled = true; await createLog(); } catch (error) { setStatus(error.message || String(error), 0); } finally { $("createButton").disabled = false; } });
 $("downloadButton").addEventListener("click", () => downloadBlob(new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "FAIR_USE_GENERATED.xlsx"));
