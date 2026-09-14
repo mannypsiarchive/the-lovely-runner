@@ -12,7 +12,7 @@
   due-diligence document generation can be added after this local Excel path works.
 */
 
-const FAIR_USE_LOG_VERSION = "3.1";
+const FAIR_USE_LOG_VERSION = "3.2";
 
 const HEADER_ROW = 6;
 const DATA_START_ROW = 7;
@@ -349,12 +349,16 @@ function metadataFromMediaInfo(result) {
   };
 }
 
+function mediaInfoFactory() {
+  if (typeof window.MediaInfo === "function") return window.MediaInfo;
+  if (typeof window.MediaInfo?.mediaInfoFactory === "function") return window.MediaInfo.mediaInfoFactory;
+  if (typeof window.MediaInfo?.default === "function") return window.MediaInfo.default;
+  if (typeof window.mediaInfoFactory === "function") return window.mediaInfoFactory;
+  return null;
+}
+
 async function detectVideoMetadata(file) {
-  const factory = typeof window.MediaInfo === "function"
-    ? window.MediaInfo
-    : typeof window.mediaInfoFactory === "function"
-      ? window.mediaInfoFactory
-      : null;
+  const factory = mediaInfoFactory();
   if (!factory) throw new Error("The browser media metadata library did not load. Refresh the page and try again.");
 
   setStatus("Reading reference cut metadata…", "working", 4);
@@ -794,3 +798,19 @@ $("downloadImagesButton").addEventListener("click", () => {
   void downloadImages();
 });
 $("cancelButton").addEventListener("click", () => window.location.reload());
+
+if (window.ExcelJS?.Workbook) {
+  logActivity("Excel workbook library loaded.", "success");
+} else {
+  logActivity("Excel workbook library is not available.", "warning");
+}
+if (window.JSZip) {
+  logActivity("Screenshot ZIP library loaded.", "success");
+} else {
+  logActivity("Screenshot ZIP library is not available.", "warning");
+}
+if (mediaInfoFactory()) {
+  logActivity("MediaInfo metadata library loaded.", "success");
+} else {
+  logActivity("MediaInfo metadata library is not available. Check the CDN connection or browser network settings.", "warning");
+}
