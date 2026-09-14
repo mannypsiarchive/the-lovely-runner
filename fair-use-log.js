@@ -1,8 +1,20 @@
-import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
-import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js";
+const FAIR_USE_LOG_VERSION = "1.1";
+const FFmpeg = window.FFmpegWASM?.FFmpeg;
+
+async function fetchFile(file) {
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+async function toBlobURL(url, mimeType) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load FFmpeg asset (${response.status}).`);
+  return URL.createObjectURL(new Blob([await response.arrayBuffer()], { type: mimeType }));
+}
 
 const $ = (id) => document.getElementById(id);
 const state = { workbook: null, worksheet: null, outputBuffer: null, images: [], ffmpeg: null, driveTokenClient: null, driveReady: false, gapiReady: false, accessToken: null, selectedLogFile: null };
+
+document.querySelectorAll("[data-app-version]").forEach((element) => { element.textContent = FAIR_USE_LOG_VERSION; });
 
 const GOOGLE_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const GOOGLE_API_KEY = "AIzaSyCh8ia27PwiWJkPCypoUyvj5TD8YJVjJSc";
@@ -45,6 +57,7 @@ function findSheet(workbook) {
 
 async function loadFFmpeg() {
   if (state.ffmpeg) return state.ffmpeg;
+  if (!FFmpeg) throw new Error("The local FFmpeg browser engine did not load. Please refresh the page and try again.");
   const ffmpeg = new FFmpeg();
   ffmpeg.on("log", ({ message }) => { state.lastProbeLog = `${state.lastProbeLog || ""}\n${message}`; });
   setStatus("Loading local video engine…", 5);
