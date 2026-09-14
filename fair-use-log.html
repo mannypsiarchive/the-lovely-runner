@@ -11,8 +11,8 @@
     <header class="hero">
       <div>
         <div class="eyebrow">FAIR USE WORKFLOW TOOL</div>
-        <h1>Fair Use Log <span class="version-tag" data-app-version>2.0</span></h1>
-        <p>Create midpoint screenshots locally and prepare a review workbook.</p>
+        <h1>Fair Use Log <span class="version-tag" data-app-version>3.0</span></h1>
+        <p>Calculate midpoint timecodes and capture reference-cut frames locally.</p>
       </div>
       <div class="hero-actions">
         <a class="button ghost back-home" href="AEFS%20-%20SAMPLE%20FAIR%20USE%20LOG.xlsx" download title="Download Fair Use Log Template">Templates</a>
@@ -32,19 +32,8 @@
 
       <div class="field">
         <label for="logFile">Choose a partially completed Fair Use Log</label>
-        <input id="logFile" type="file" accept=".xlsx">
+        <input id="logFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
       </div>
-
-      <div class="or-divider"><span>OR</span></div>
-
-      <div class="field">
-        <label for="driveSheetUrl">Choose a Fair Use Log from Google Drive</label>
-        <input id="driveSheetUrl" type="url" placeholder="Paste the Google Sheet URL here" autocomplete="off">
-      </div>
-      <div class="actions compact-actions">
-        <button class="button secondary" id="connectGoogleButton" type="button" disabled>Connect Google Sheet</button>
-      </div>
-      <div class="logger-status" id="googleStatus" aria-live="polite">Google connection is optional for Google Sheet input.</div>
       <div class="logger-status" id="selectedLogStatus" aria-live="polite">No Fair Use Log selected.</div>
 
       <div class="form-grid">
@@ -54,6 +43,9 @@
         <div class="field"><label for="network">Network</label><input id="network" placeholder="Network"></div>
         <div class="field"><label for="referenceLink">Reference cut link</label><input id="referenceLink" type="url" placeholder="Optional link to reference cut"></div>
       </div>
+
+      <div class="metadata-status hidden" id="midpointStatus" aria-live="polite"></div>
+      <div class="midpoint-preview hidden" id="midpointPreview"></div>
     </section>
 
     <section class="card logger-card">
@@ -61,14 +53,15 @@
         <div>
           <div class="eyebrow">STEP 02</div>
           <h2>Choose the reference cut</h2>
-          <p>Video processing happens locally in this browser. The reference cut is never uploaded by this tool.</p>
+          <p>Choose the full-program video that contains the visible BITC in the upper-right corner. The video stays on your computer.</p>
         </div>
       </div>
       <div class="field">
         <label for="referenceCut">Reference cut</label>
         <input id="referenceCut" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v,.webm">
       </div>
-      <div class="metadata-status" id="videoMetadataStatus" aria-live="polite">Choose a reference cut. Start timecode and frame rate will be detected automatically when you create the log.</div>
+      <div class="metadata-status" id="videoMetadataStatus" aria-live="polite">Choose a reference cut. Its embedded start timecode and frame rate will be detected automatically.</div>
+      <div class="logger-status">For this first local test, the browser must be able to decode the video. H.264 MP4/MOV is the safest choice; some ProRes or MXF files may require a later browser video-engine option.</div>
       <div class="actions">
         <button class="button primary" id="createButton" type="button">Create Fair Use Log</button>
         <button class="button secondary" id="cancelButton" type="button">Reset</button>
@@ -93,14 +86,13 @@
         <button class="button primary" id="downloadButton" type="button">Download Generated Excel</button>
         <button class="button secondary" id="downloadImagesButton" type="button">Download Screenshots ZIP</button>
       </div>
-      <div class="logger-status">The Excel download contains the embedded screenshots. Google Sheet text/header updates use the same simple connection as the Archival Logging Helper.</div>
+      <div class="logger-status">The Excel download contains the generated screenshots embedded in column A.</div>
     </section>
   </main>
 
-  <script src="https://apis.google.com/js/api.js"></script>
-  <script src="https://accounts.google.com/gsi/client"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://unpkg.com/mediainfo.js"></script>
   <script src="fair-use-log.js"></script>
 </body>
 </html>

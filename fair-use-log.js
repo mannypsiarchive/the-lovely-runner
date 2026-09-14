@@ -1,28 +1,18 @@
 /*
-  Fair Use Log 2.0
+  Fair Use Log 3.0
 
-  The media workflow is intentionally local:
-  - The workbook and reference cut stay in the user's browser.
-  - FFmpeg.wasm reads the media and extracts frames locally.
-  - The reference cut's embedded start timecode and frame rate are detected.
-  - ExcelJS embeds the generated JPEGs into column A.
+  This first browser test deliberately does not use FFmpeg or Google APIs.
+  It proves the local Excel workflow with two browser capabilities:
 
-  Google Sheet input uses the same logger-style OAuth connection. The sheet is
-  read into the same internal row model, so the timecode logic is not different
-  for Excel and Google input.
+  - MediaInfo.js reads the reference cut's embedded start timecode and frame rate.
+  - The browser's native <video> element seeks the reference cut and Canvas captures
+    the complete frame, including a visible BITC in the upper-right corner.
+
+  The workbook and video remain local to the user's browser. Google Sheet input and
+  due-diligence document generation can be added after this local Excel path works.
 */
 
-const FAIR_USE_LOG_VERSION = "2.0";
-const FFMPEG_VERSION = "0.12.10";
-const FFMPEG_PACKAGE_BASE = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd`;
-const FFMPEG_CORE_BASE = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
-const FFMPEG_CLASS_URL = `${FFMPEG_PACKAGE_BASE}/ffmpeg.js?fair-use-log=${FAIR_USE_LOG_VERSION}`;
-const FFMPEG_CLASS_WORKER_URL = `${FFMPEG_PACKAGE_BASE}/814.ffmpeg.js?fair-use-log=${FAIR_USE_LOG_VERSION}`;
-
-const GOOGLE_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
-const GOOGLE_API_KEY = "AIzaSyCh8ia27PwiWJkPCypoUyvj5TD8YJVjJSc";
-const SHEETS_DISCOVERY_DOC = "https://sheets.googleapis.com/$discovery/rest?version=v4";
-const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const FAIR_USE_LOG_VERSION = "3.0";
 
 const HEADER_ROW = 6;
 const DATA_START_ROW = 7;
@@ -40,26 +30,32 @@ const $ = (id) => document.getElementById(id);
 const state = {
   workbook: null,
   worksheet: null,
+  rows: [],
+  midpoints: [],
+  referenceFile: null,
+  videoMetadata: null,
+  video: null,
+  videoUrl: null,
   outputBuffer: null,
   images: [],
-  ffmpeg: null,
-  ffmpegClassWorkerUrl: null,
-  ffmpegInputName: null,
-  selectedLogFile: null,
-  videoMetadata: null,
-  googleTokenClient: null,
-  googleReady: false,
-  googleToken: null,
-  googleSheetId: null,
-  googleSheetTitle: null,
-  googleSheetName: null,
-  googleRows: null,
-  currentLogMessages: [],
+  previewUrls: [],
+  logReadToken: 0,
 };
 
 document.querySelectorAll("[data-app-version]").forEach((element) => {
   element.textContent = FAIR_USE_LOG_VERSION;
 });
+
+function cellText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+  if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || "").join("").trim();
+  if (value.text !== undefined) return String(value.text).trim();
+  if (value.result !== undefined) return String(value.result).trim();
+  return String(value).trim();
+}
 
 function setStatus(message, kind = "working", percent = null) {
   const status = $("statusPill");
@@ -102,21 +98,17 @@ function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-function cellText(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value).trim();
-  if (value.text !== undefined) return String(value.text).trim();
-  if (value.result !== undefined) return String(value.result).trim();
-  if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || "").join("").trim();
-  return String(value).trim();
+function normalizeTimecode(value) {
+  return cellText(value).replace(/\s+/g, "").replace(/\./g, ":");
 }
 
-function normalizeTimecode(value) {
-  return cellText(value).replace(/;/g, ":").trim();
+function extractTimecode(value) {
+  const match = cellText(value).match(/\d{2}:\d{2}:\d{2}[:;]\d{2}/);
+  return match ? normalizeTimecode(match[0]) : "";
 }
 
 function isTimecode(value) {
-  return /^\d{2}:\d{2}:\d{2}[:;]\d{2}$/.test(cellText(value));
+  return /^\d{2}:\d{2}:\d{2}[:;]\d{2}$/.test(normalizeTimecode(value));
 }
 
 function nominalFrameRate(fps) {
@@ -126,180 +118,130 @@ function nominalFrameRate(fps) {
   return Math.max(1, Math.round(fps));
 }
 
+function displayFrameRate(fps) {
+  const common = [
+    [23.976, "23.976"],
+    [24, "24"],
+    [25, "25"],
+    [29.97, "29.97"],
+    [30, "30"],
+    [50, "50"],
+    [59.94, "59.94"],
+    [60, "60"],
+  ];
+  const match = common.find(([target]) => Math.abs(fps - target) < 0.02);
+  if (match) return match[1];
+  return Number.isInteger(fps) ? String(fps) : fps.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 function parseRate(value) {
-  const text = cellText(value);
+  const text = cellText(value).replace(/,/g, "");
   if (!text) return null;
-  if (text.includes("/")) {
-    const [numerator, denominator] = text.split("/").map(Number);
+  const fraction = text.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+  if (fraction) {
+    const numerator = Number(fraction[1]);
+    const denominator = Number(fraction[2]);
     if (denominator) return numerator / denominator;
   }
-  const result = Number(text.replace(/\s*fps?\s*$/i, ""));
+  const number = text.match(/\d+(?:\.\d+)?/);
+  const result = number ? Number(number[0]) : NaN;
   return Number.isFinite(result) && result > 0 ? result : null;
 }
 
 function parseTimecode(value, fps) {
-  const raw = cellText(value).trim();
+  const raw = normalizeTimecode(value);
   const dropFrame = raw.includes(";");
   const parts = raw.replace(/;/g, ":").split(":").map(Number);
+  const nominal = nominalFrameRate(fps);
   if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
     throw new Error(`Invalid timecode: ${raw || "(blank)"}`);
   }
-
   const [hours, minutes, seconds, frames] = parts;
-  const nominal = nominalFrameRate(fps);
-  let total = ((hours * 60 + minutes) * 60 + seconds) * nominal + frames;
+  if (minutes > 59 || seconds > 59 || frames >= nominal) {
+    throw new Error(`Invalid timecode: ${raw}`);
+  }
 
+  let total = ((hours * 60 + minutes) * 60 + seconds) * nominal + frames;
   if (dropFrame && (Math.abs(fps - 29.97) < 0.02 || Math.abs(fps - 59.94) < 0.02)) {
     const droppedPerMinute = nominal === 60 ? 4 : 2;
     const totalMinutes = hours * 60 + minutes;
     total -= droppedPerMinute * (totalMinutes - Math.floor(totalMinutes / 10));
   }
-
   return total;
 }
 
-function timecodeFromFrames(frames, fps, dropFrame = false) {
+function timecodeFromFrames(frameNumber, fps, dropFrame = false) {
   const nominal = nominalFrameRate(fps);
-  let remaining = Math.max(0, Math.floor(frames));
-  const hours = Math.floor(remaining / (nominal * 3600));
-  remaining -= hours * nominal * 3600;
-  const minutes = Math.floor(remaining / (nominal * 60));
-  remaining -= minutes * nominal * 60;
-  const seconds = Math.floor(remaining / nominal);
-  const frame = remaining % nominal;
+  let frames = Math.max(0, Math.floor(frameNumber));
   const separator = dropFrame ? ";" : ":";
-  return [hours, minutes, seconds, frame].map((x) => String(Math.floor(x)).padStart(2, "0")).join(separator);
-}
 
-function makeUniqueName(prefix, originalName, extension = "") {
-  const safe = cellText(originalName).replace(/[^a-z0-9_.-]/gi, "_").slice(-80) || "reference";
-  return `${prefix}-${Date.now()}-${safe}${extension}`;
-}
+  if (dropFrame && (Math.abs(fps - 29.97) < 0.02 || Math.abs(fps - 59.94) < 0.02)) {
+    const dropped = nominal === 60 ? 4 : 2;
+    const framesPerMinute = nominal * 60 - dropped;
+    const framesPerTenMinutes = nominal * 60 * 10 - dropped * 9;
+    const tenMinuteBlocks = Math.floor(frames / framesPerTenMinutes);
+    let remainder = frames % framesPerTenMinutes;
+    let minuteInBlock;
+    let frameInMinute;
 
-async function toBlobURL(url, mimeType) {
-  const response = await fetch(url, { mode: "cors", cache: "no-store" });
-  if (!response.ok) throw new Error(`Could not load local video engine asset (${response.status}).`);
-  return URL.createObjectURL(new Blob([await response.arrayBuffer()], { type: mimeType }));
-}
+    if (remainder < nominal * 60) {
+      minuteInBlock = 0;
+      frameInMinute = remainder;
+    } else {
+      remainder -= nominal * 60;
+      minuteInBlock = 1 + Math.floor(remainder / framesPerMinute);
+      minuteInBlock = Math.min(9, minuteInBlock);
+      frameInMinute = remainder - (minuteInBlock - 1) * framesPerMinute + dropped;
+    }
 
-async function loadExternalScript(url) {
-  await new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = url;
-    script.async = true;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("Could not load the local video engine library."));
-    document.head.appendChild(script);
-  });
-}
-
-async function loadFfmpeg() {
-  if (state.ffmpeg) return state.ffmpeg;
-
-  setStatus("Loading local video engine…", "working", 4);
-  if (!window.FFmpegWASM?.FFmpeg) await loadExternalScript(FFMPEG_CLASS_URL);
-  const FFmpegClass = window.FFmpegWASM?.FFmpeg;
-  if (!FFmpegClass) throw new Error("The local video engine library did not load.");
-
-  const ffmpeg = new FFmpegClass();
-  ffmpeg.on("log", ({ message }) => {
-    state.currentLogMessages.push(message);
-    if (state.currentLogMessages.length > 250) state.currentLogMessages.shift();
-  });
-
-  // Supply a same-origin Blob URL for the class worker. This prevents the
-  // browser from constructing 814.ffmpeg.js directly from jsDelivr.
-  state.ffmpegClassWorkerUrl = await toBlobURL(FFMPEG_CLASS_WORKER_URL, "text/javascript");
-  await ffmpeg.load({
-    classWorkerURL: state.ffmpegClassWorkerUrl,
-    coreURL: await toBlobURL(`${FFMPEG_CORE_BASE}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(`${FFMPEG_CORE_BASE}/ffmpeg-core.wasm`, "application/wasm"),
-  });
-
-  state.ffmpeg = ffmpeg;
-  return ffmpeg;
-}
-
-function extractJson(text) {
-  const source = String(text || "").trim();
-  const start = source.indexOf("{");
-  const end = source.lastIndexOf("}");
-  if (start < 0 || end < start) return null;
-  try {
-    return JSON.parse(source.slice(start, end + 1));
-  } catch {
-    return null;
+    const totalMinutes = tenMinuteBlocks * 10 + minuteInBlock;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const seconds = Math.floor(frameInMinute / nominal);
+    const frame = frameInMinute % nominal;
+    const prefix = [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+    return `${prefix}${separator}${String(frame).padStart(2, "0")}`;
   }
+
+  const hours = Math.floor(frames / (nominal * 3600));
+  frames -= hours * nominal * 3600;
+  const minutes = Math.floor(frames / (nominal * 60));
+  frames -= minutes * nominal * 60;
+  const seconds = Math.floor(frames / nominal);
+  const frame = frames % nominal;
+  const prefix = [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+  return `${prefix}${separator}${String(frame).padStart(2, "0")}`;
 }
 
-function metadataFromProbe(probe) {
-  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
-  const videoStream = streams.find((stream) => stream.codec_type === "video") || {};
-  const formatTags = probe?.format?.tags || {};
-  const streamTags = streams.map((stream) => stream.tags || {});
-  const timecode = streamTags.map((tags) => tags.timecode).find(Boolean) || formatTags.timecode || null;
-  const rate = parseRate(videoStream.avg_frame_rate) || parseRate(videoStream.r_frame_rate);
-  if (!timecode || !rate) return null;
+function calculateMidpoint(item, fps) {
+  const inFrames = parseTimecode(item.tcIn, fps);
+  let outFrames = parseTimecode(item.tcOut, fps);
+  const dayFrames = nominalFrameRate(fps) * 24 * 60 * 60;
+  if (outFrames < inFrames) outFrames += dayFrames;
+  const midpointFrames = outFrames - inFrames <= 2
+    ? inFrames
+    : Math.floor((inFrames + outFrames) / 2);
+  const dropFrame = normalizeTimecode(item.tcIn).includes(";") || normalizeTimecode(item.tcOut).includes(";");
   return {
-    startTimecode: normalizeTimecode(timecode),
-    fps: rate,
-    fpsLabel: rate.toFixed(3).replace(/0+$/, "").replace(/\.$/, ""),
-    width: videoStream.width || null,
-    height: videoStream.height || null,
-    duration: probe?.format?.duration || null,
+    ...item,
+    inFrames,
+    outFrames,
+    midpointFrames,
+    midpoint: timecodeFromFrames(midpointFrames, fps, dropFrame),
   };
 }
 
-async function detectVideoMetadata(file) {
-  const ffmpeg = await loadFfmpeg();
-  const inputName = makeUniqueName("probe", file.name);
-  const outputName = `${inputName}.json`;
-  state.currentLogMessages = [];
-  await ffmpeg.writeFile(inputName, new Uint8Array(await file.arrayBuffer()));
-
-  try {
-    const exitCode = await ffmpeg.ffprobe([
-      "-v", "error",
-      "-show_entries", "stream=index,codec_type,avg_frame_rate,r_frame_rate,width,height:stream_tags=timecode",
-      "-show_entries", "format=duration:format_tags=timecode",
-      "-of", "json",
-      inputName,
-      "-o", outputName,
-    ]);
-    if (exitCode !== 0) throw new Error(`The video metadata reader returned code ${exitCode}.`);
-    const raw = await ffmpeg.readFile(outputName, "utf8");
-    const metadata = metadataFromProbe(extractJson(raw));
-    if (!metadata) throw new Error("The video opened, but its embedded start timecode or frame rate could not be read.");
-    state.videoMetadata = metadata;
-    $("videoMetadataStatus").textContent = `Detected automatically — Start TC: ${metadata.startTimecode} · Frame rate: ${metadata.fpsLabel} fps`;
-    $("videoMetadataStatus").className = "metadata-status success";
-    return metadata;
-  } catch (error) {
-    const logTail = state.currentLogMessages.filter(Boolean).slice(-6).join(" ");
-    throw new Error(`${error.message || error}${logTail ? ` ${logTail}` : ""}`.trim());
-  } finally {
-    await ffmpeg.deleteFile(inputName).catch(() => {});
-    await ffmpeg.deleteFile(outputName).catch(() => {});
-  }
-}
-
 function findFairUseSheet(workbook) {
-  return workbook.worksheets.find((sheet) => cellText(sheet.getCell(`A${HEADER_ROW}`).value).toLowerCase() === "thumbnail") || workbook.worksheets[0];
-}
-
-function updateHeaderRows(sheet) {
-  sheet.getCell("A1").value = `${$("showTitle").value.trim() || "SHOW TITLE"} — ${$("episodeTitle").value.trim() || "EPISODE"}`;
-  sheet.getCell("A2").value = "Fair Use Spreadsheet";
-  sheet.getCell("A3").value = $("companyLlc").value.trim();
-  sheet.getCell("A4").value = `NETWORK: ${$("network").value.trim()}`;
-  sheet.getCell("A5").value = `Shift Link: ${$("referenceLink").value.trim()}`;
+  return workbook.worksheets.find((sheet) =>
+    cellText(sheet.getCell(`A${HEADER_ROW}`).value).toLowerCase() === "thumbnail"
+  ) || workbook.worksheets[0];
 }
 
 function getWorkbookRows(sheet) {
   const rows = [];
   for (let row = DATA_START_ROW; row <= sheet.rowCount; row += 1) {
-    const tcIn = cellText(sheet.getCell(row, TC_IN_COLUMN).value);
-    const tcOut = cellText(sheet.getCell(row, TC_OUT_COLUMN).value);
+    const tcIn = normalizeTimecode(sheet.getCell(row, TC_IN_COLUMN).value);
+    const tcOut = normalizeTimecode(sheet.getCell(row, TC_OUT_COLUMN).value);
     if (!tcIn && !tcOut) continue;
     if (!tcIn || !tcOut) throw new Error(`Row ${row} needs both TC IN and TC OUT.`);
     if (!isTimecode(tcIn) || !isTimecode(tcOut)) throw new Error(`Row ${row} has an invalid TC IN or TC OUT.`);
@@ -316,256 +258,447 @@ function getWorkbookRows(sheet) {
   return rows;
 }
 
-async function prepareFfmpegInput(file) {
-  const ffmpeg = await loadFfmpeg();
-  if (state.ffmpegInputName) await ffmpeg.deleteFile(state.ffmpegInputName).catch(() => {});
-  state.ffmpegInputName = makeUniqueName("reference", file.name);
-  await ffmpeg.writeFile(state.ffmpegInputName, new Uint8Array(await file.arrayBuffer()));
-  return state.ffmpegInputName;
+function findTrack(tracks, type) {
+  return tracks.find((track) => cellText(track?.["@type"]).toLowerCase() === type.toLowerCase()) || {};
 }
 
-async function makeScreenshot(inputName, offsetFrames, fps, outputName) {
-  const ffmpeg = await loadFfmpeg();
-  const seconds = Math.max(0, offsetFrames / fps);
-  const exitCode = await ffmpeg.exec([
-    "-hide_banner", "-loglevel", "error", "-ss", seconds.toFixed(6),
-    "-i", inputName,
-    "-frames:v", "1",
-    "-vf", "scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2:color=black",
-    "-q:v", "3", "-y", outputName,
-  ]);
-  if (exitCode !== 0) throw new Error(`FFmpeg could not extract the frame at ${seconds.toFixed(3)} seconds.`);
-  const data = await ffmpeg.readFile(outputName);
-  await ffmpeg.deleteFile(outputName).catch(() => {});
-  return new Uint8Array(data);
+function trackValue(track, names) {
+  const keys = Object.keys(track || {});
+  for (const name of names) {
+    const key = keys.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+    if (key && cellText(track[key])) return track[key];
+  }
+  return "";
+}
+
+function resultTracks(result) {
+  if (typeof result === "string") {
+    try { result = JSON.parse(result); } catch { return []; }
+  }
+  const tracks = result?.media?.track || result?.Media?.track || result?.media?.Track || [];
+  return Array.isArray(tracks) ? tracks : [tracks].filter(Boolean);
+}
+
+function metadataFromMediaInfo(result) {
+  const tracks = resultTracks(result);
+  const general = findTrack(tracks, "General");
+  const video = findTrack(tracks, "Video");
+  const numerator = trackValue(video, ["FrameRate_Num", "FrameRateNumerator"]);
+  const denominator = trackValue(video, ["FrameRate_Den", "FrameRateDenominator"]);
+  const fps = numerator && denominator
+    ? Number(numerator) / Number(denominator)
+    : parseRate(trackValue(video, ["FrameRate", "FrameRate_Original", "FrameRate_Nominal"]));
+  const startTimecode = [
+    trackValue(video, ["TimeCode_FirstFrame", "TimeCode_FirstFrame_Original", "TimeCode_Start"]),
+    trackValue(general, ["TimeCode_FirstFrame", "TimeCode", "TimeCode_Start"]),
+    trackValue(video, ["TimeCode"]),
+  ].map(extractTimecode).find(Boolean) || "";
+  const width = Number(trackValue(video, ["Width"])) || null;
+  const height = Number(trackValue(video, ["Height"])) || null;
+  const duration = parseRate(trackValue(general, ["Duration"])) || null;
+
+  if (!fps) throw new Error("The reference cut opened, but its frame rate was not found in the media metadata.");
+  if (!startTimecode) throw new Error("The reference cut opened, but its embedded start timecode was not found. The visible BITC is used in the screenshot, but the timing offset still needs a readable start timecode.");
+  if (!isTimecode(startTimecode)) throw new Error(`The detected start timecode is not a complete timecode: ${startTimecode}`);
+
+  return {
+    fps,
+    fpsLabel: displayFrameRate(fps),
+    startTimecode,
+    width,
+    height,
+    duration,
+  };
+}
+
+async function detectVideoMetadata(file) {
+  const factory = typeof window.MediaInfo === "function"
+    ? window.MediaInfo
+    : typeof window.mediaInfoFactory === "function"
+      ? window.mediaInfoFactory
+      : null;
+  if (!factory) throw new Error("The browser media metadata library did not load. Refresh the page and try again.");
+
+  setStatus("Reading reference cut metadata…", "working", 4);
+  $("videoMetadataStatus").textContent = "Reading embedded start timecode and frame rate…";
+  $("videoMetadataStatus").className = "metadata-status";
+
+  let mediaInfo;
+  try {
+    mediaInfo = await factory({ format: "object", full: true });
+    const readChunk = async (chunkSize, offset) =>
+      new Uint8Array(await file.slice(offset, offset + chunkSize).arrayBuffer());
+    const result = await mediaInfo.analyzeData(file.size, readChunk);
+    const metadata = metadataFromMediaInfo(result);
+    state.videoMetadata = metadata;
+    $("videoMetadataStatus").textContent = `Detected automatically — Start TC: ${metadata.startTimecode} · Frame rate: ${metadata.fpsLabel} fps${metadata.width && metadata.height ? ` · ${metadata.width}×${metadata.height}` : ""}`;
+    $("videoMetadataStatus").className = "metadata-status success";
+    renderMidpointPreview();
+    return metadata;
+  } finally {
+    if (mediaInfo?.close) mediaInfo.close();
+  }
+}
+
+function updateHeaderRows(sheet) {
+  sheet.getCell("A1").value = `${$("showTitle").value.trim() || "SHOW TITLE"} — ${$("episodeTitle").value.trim() || "EPISODE"}`;
+  sheet.getCell("A2").value = "Fair Use Spreadsheet";
+  sheet.getCell("A3").value = $("companyLlc").value.trim();
+  sheet.getCell("A4").value = `NETWORK: ${$("network").value.trim()}`;
+  sheet.getCell("A5").value = `Shift Link: ${$("referenceLink").value.trim()}`;
+}
+
+function renderMidpointPreview() {
+  const status = $("midpointStatus");
+  const preview = $("midpointPreview");
+  if (!state.rows.length) {
+    status.classList.add("hidden");
+    preview.classList.add("hidden");
+    return;
+  }
+
+  if (!state.videoMetadata) {
+    status.textContent = `${state.rows.length} row${state.rows.length === 1 ? "" : "s"} found. Select a reference cut to calculate exact frame midpoints.`;
+    status.className = "metadata-status";
+    status.classList.remove("hidden");
+    preview.classList.add("hidden");
+    return;
+  }
+
+  try {
+    state.midpoints = state.rows.map((item) => calculateMidpoint(item, state.videoMetadata.fps));
+  } catch (error) {
+    status.textContent = error.message;
+    status.className = "metadata-status";
+    status.classList.remove("hidden");
+    preview.classList.add("hidden");
+    return;
+  }
+
+  status.textContent = `${state.midpoints.length} midpoint${state.midpoints.length === 1 ? "" : "s"} calculated at ${state.videoMetadata.fpsLabel} fps. These are the frame timecodes the reference cut will be asked to show.`;
+  status.className = "metadata-status success";
+  status.classList.remove("hidden");
+
+  preview.innerHTML = "";
+  const heading = document.createElement("div");
+  heading.className = "midpoint-heading";
+  heading.textContent = "Midpoint check";
+  preview.appendChild(heading);
+
+  const table = document.createElement("table");
+  table.className = "midpoint-table";
+  const header = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  ["Row", "File Name", "TC IN", "TC OUT", "Midpoint"].forEach((label) => {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    headerRow.appendChild(cell);
+  });
+  header.appendChild(headerRow);
+  table.appendChild(header);
+  const body = document.createElement("tbody");
+  const visibleRows = state.midpoints.slice(0, 100);
+  visibleRows.forEach((item) => {
+    const row = document.createElement("tr");
+    [item.row, item.fileName || "(no file name)", item.tcIn, item.tcOut, item.midpoint].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = String(value);
+      row.appendChild(cell);
+    });
+    body.appendChild(row);
+  });
+  table.appendChild(body);
+  preview.appendChild(table);
+  if (state.midpoints.length > visibleRows.length) {
+    const note = document.createElement("div");
+    note.className = "midpoint-note";
+    note.textContent = `Showing the first ${visibleRows.length} rows. All ${state.midpoints.length} rows will be processed.`;
+    preview.appendChild(note);
+  }
+  preview.classList.remove("hidden");
+}
+
+async function loadLocalWorkbook(file) {
+  if (!window.ExcelJS?.Workbook) throw new Error("The Excel workbook library did not load. Refresh the page and try again.");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await file.arrayBuffer());
+  const worksheet = findFairUseSheet(workbook);
+  const rows = getWorkbookRows(worksheet);
+  if (!rows.length) throw new Error("No rows were found with both TC IN and TC OUT timecodes in columns C and D.");
+  return { workbook, worksheet, rows };
+}
+
+function revokeVideo() {
+  if (state.video) {
+    state.video.pause();
+    state.video.remove();
+    state.video = null;
+  }
+  if (state.videoUrl) {
+    URL.revokeObjectURL(state.videoUrl);
+    state.videoUrl = null;
+  }
+}
+
+function waitForVideoMetadata(video) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => finish(new Error("The browser could not read the reference cut's video stream.")), 60000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      video.removeEventListener("loadedmetadata", onLoaded);
+      video.removeEventListener("error", onError);
+    };
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      error ? reject(error) : resolve();
+    };
+    const onLoaded = () => {
+      if (!video.videoWidth || !video.videoHeight || !Number.isFinite(video.duration)) {
+        finish(new Error("The browser opened the file but could not decode its video frames. Try an H.264 MP4/MOV reference cut for this browser test."));
+        return;
+      }
+      finish();
+    };
+    const onError = () => {
+      const code = video.error?.code;
+      const detail = code === 3 ? "The video codec could not be decoded by this browser." : "The browser could not open this video file.";
+      finish(new Error(`${detail} Try an H.264 MP4/MOV reference cut for this browser test.`));
+    };
+    video.addEventListener("loadedmetadata", onLoaded, { once: true });
+    video.addEventListener("error", onError, { once: true });
+  });
+}
+
+async function loadReferenceVideo(file) {
+  revokeVideo();
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.style.display = "none";
+  state.videoUrl = URL.createObjectURL(file);
+  video.src = state.videoUrl;
+  document.body.appendChild(video);
+  await waitForVideoMetadata(video);
+  state.video = video;
+  return video;
+}
+
+function waitForFrame(video) {
+  if (typeof video.requestVideoFrameCallback === "function") {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      video.requestVideoFrameCallback(finish);
+      setTimeout(finish, 250);
+    });
+  }
+  return new Promise((resolve) => setTimeout(resolve, 80));
+}
+
+async function seekVideo(video, seconds) {
+  const target = Math.max(0, Math.min(seconds, Math.max(0, video.duration - 0.001)));
+  if (Math.abs(video.currentTime - target) > 0.001) {
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => finish(new Error(`The browser could not seek to ${target.toFixed(3)} seconds.`)), 60000);
+      const cleanup = () => {
+        clearTimeout(timeout);
+        video.removeEventListener("seeked", onSeeked);
+        video.removeEventListener("error", onError);
+      };
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        error ? reject(error) : resolve();
+      };
+      const onSeeked = () => finish();
+      const onError = () => finish(new Error("The browser could not decode the requested reference-cut frame."));
+      video.addEventListener("seeked", onSeeked, { once: true });
+      video.addEventListener("error", onError, { once: true });
+      try {
+        video.currentTime = target;
+      } catch (error) {
+        finish(error);
+      }
+    });
+  }
+  await waitForFrame(video);
+}
+
+function canvasBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The browser could not create a screenshot.")), "image/jpeg", 0.7);
+  });
+}
+
+async function captureFrame(video, seconds) {
+  await seekVideo(video, seconds);
+  const canvas = document.createElement("canvas");
+  canvas.width = THUMBNAIL_WIDTH;
+  canvas.height = THUMBNAIL_HEIGHT;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("The browser could not create a screenshot canvas.");
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+  const width = Math.round(video.videoWidth * scale);
+  const height = Math.round(video.videoHeight * scale);
+  const left = Math.round((canvas.width - width) / 2);
+  const top = Math.round((canvas.height - height) / 2);
+  context.drawImage(video, left, top, width, height);
+  const blob = await canvasBlob(canvas);
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 function addScreenshotToExcel(sheet, rowNumber, bytes) {
   const imageId = state.workbook.addImage({ buffer: bytes.buffer, extension: "jpeg" });
-  sheet.addImage(imageId, { tl: { col: 0, row: rowNumber - 1 }, ext: { width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT } });
+  sheet.addImage(imageId, {
+    tl: { col: 0, row: rowNumber - 1 },
+    ext: { width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT },
+  });
   sheet.getRow(rowNumber).height = 140;
   sheet.getColumn(1).width = 46;
 }
 
-function appendThumbnailCard(row, midpoint, bytes) {
+function appendThumbnailCard(item, bytes) {
   const card = document.createElement("figure");
   card.className = "thumbnail-card";
   const image = document.createElement("img");
-  image.src = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
-  image.alt = `Row ${row} screenshot at ${midpoint}`;
+  const url = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+  state.previewUrls.push(url);
+  image.src = url;
+  image.alt = `Row ${item.row} screenshot at ${item.midpoint}`;
   const caption = document.createElement("figcaption");
-  caption.textContent = `Row ${row} · ${midpoint}`;
+  caption.textContent = `Row ${item.row} · ${item.midpoint}`;
   card.append(image, caption);
   $("thumbnailGrid").append(card);
 }
 
-async function processWorkbook(workbook, sheet, rows, videoFile) {
-  updateHeaderRows(sheet);
-  state.workbook = workbook;
-  state.worksheet = sheet;
-  state.images = [];
-  const metadata = state.videoMetadata || await detectVideoMetadata(videoFile);
-  const startFrames = parseTimecode(metadata.startTimecode, metadata.fps);
-  const inputName = await prepareFfmpegInput(videoFile);
-
-  $("resultsCard").classList.remove("hidden");
-  $("thumbnailGrid").innerHTML = "";
-  for (let index = 0; index < rows.length; index += 1) {
-    const item = rows[index];
-    const inFrames = parseTimecode(item.tcIn, metadata.fps);
-    let outFrames = parseTimecode(item.tcOut, metadata.fps);
-    if (outFrames < inFrames) outFrames += nominalFrameRate(metadata.fps) * 24 * 60 * 60;
-    const midpointFrames = Math.floor((inFrames + outFrames) / 2);
-    const offsetFrames = midpointFrames - startFrames;
-    if (offsetFrames < 0) throw new Error(`Row ${item.row}: midpoint occurs before the reference cut start timecode.`);
-    const midpoint = timecodeFromFrames(midpointFrames, metadata.fps, item.tcIn.includes(";") || item.tcOut.includes(";"));
-    const bytes = await makeScreenshot(inputName, offsetFrames, metadata.fps, `frame-${item.row}.jpg`);
-    addScreenshotToExcel(sheet, item.row, bytes);
-    state.images.push({ row: item.row, midpoint, bytes });
-    appendThumbnailCard(item.row, midpoint, bytes);
-    setStatus(`Creating screenshot ${index + 1} of ${rows.length}…`, "working", 10 + ((index + 1) / rows.length) * 85);
-  }
-}
-
-function parseSheetUrl(value) {
-  const match = String(value || "").match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if (!match) throw new Error("Please enter a valid Google Sheet URL.");
-  return match[1];
-}
-
-function initializeGoogle() {
-  if (state.googleTokenClient || state.googleReady) return;
-  if (!window.gapi || !window.google?.accounts?.oauth2) {
-    setTimeout(initializeGoogle, 250);
-    return;
-  }
-  gapi.load("client", async () => {
-    try {
-      await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: [SHEETS_DISCOVERY_DOC] });
-      state.googleReady = true;
-      $("connectGoogleButton").disabled = false;
-    } catch (error) {
-      $("googleStatus").textContent = `Google connection unavailable: ${error.message || error}`;
-    }
-  });
-  state.googleTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: SHEETS_SCOPE,
-    callback: "",
-  });
-}
-
-function connectGoogle() {
-  if (!state.googleTokenClient) throw new Error("Google connection is still loading. Please try again in a moment.");
-  return new Promise((resolve, reject) => {
-    state.googleTokenClient.callback = (response) => {
-      if (response.error) {
-        reject(new Error(`Google authorization failed: ${response.error}`));
-        return;
-      }
-      state.googleToken = response.access_token;
-      gapi.client.setToken({ access_token: state.googleToken });
-      $("googleStatus").textContent = "Google connected. The selected Sheet can be read and updated.";
-      $("connectGoogleButton").textContent = "Google Connected";
-      resolve();
-    };
-    state.googleTokenClient.requestAccessToken({ prompt: gapi.client.getToken() ? "" : "consent" });
-  });
-}
-
-async function loadGoogleSheetRows() {
-  const spreadsheetId = parseSheetUrl($("driveSheetUrl").value);
-  if (!state.googleToken) await connectGoogle();
-  setStatus("Reading Google Sheet…", "working", 8);
-  const response = await gapi.client.sheets.spreadsheets.get({
-    spreadsheetId,
-    includeGridData: true,
-    fields: "properties(title),sheets(properties(sheetId,title),data(startRow,startColumn,rowData(values(formattedValue,effectiveValue))))",
-  });
-  const sourceSheet = response.result.sheets?.find((sheet) => {
-    const firstRows = sheet.data?.[0]?.rowData || [];
-    return String(firstRows[HEADER_ROW - 1]?.values?.[0]?.formattedValue || "").trim().toLowerCase() === "thumbnail";
-  }) || response.result.sheets?.[0];
-  if (!sourceSheet) throw new Error("No worksheet was found in the Google Sheet.");
-
-  state.googleSheetId = spreadsheetId;
-  state.googleSheetTitle = response.result.properties?.title || "Google Fair Use Log";
-  state.googleSheetName = sourceSheet.properties?.title || "Sheet1";
-  const rowData = sourceSheet.data?.[0]?.rowData || [];
-  state.googleRows = rowData.map((row, index) => ({
-    row: index + 1,
-    values: (row.values || []).map((cell) => cell.formattedValue || ""),
-  }));
-  const rows = state.googleRows.filter((entry) => entry.row >= DATA_START_ROW && entry.values[TC_IN_COLUMN - 1] && entry.values[TC_OUT_COLUMN - 1]);
-  if (!rows.length) throw new Error("No Google Sheet rows were found with both TC IN and TC OUT.");
-  $("selectedLogStatus").textContent = `Selected Google Sheet: ${state.googleSheetTitle} · ${state.googleSheetName}`;
-  return rows;
-}
-
-async function createGoogleInputWorkbook() {
-  const rows = await loadGoogleSheetRows();
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(state.googleSheetName || "Fair Use Log");
-  state.googleRows.forEach((entry) => {
-    entry.values.forEach((value, columnIndex) => {
-      sheet.getCell(entry.row, columnIndex + 1).value = value;
-    });
-  });
-  if (!sheet.getCell(`A${HEADER_ROW}`).value) sheet.getCell(`A${HEADER_ROW}`).value = "Thumbnail";
-  return { workbook, sheet, rows };
-}
-
-async function writeGoogleHeaderResults() {
-  if (!state.googleSheetId || !state.googleSheetName) return;
-  const values = [[
-    `${$("showTitle").value.trim() || "SHOW TITLE"} — ${$("episodeTitle").value.trim() || "EPISODE"}`,
-    "Fair Use Spreadsheet",
-    $("companyLlc").value.trim(),
-    `NETWORK: ${$("network").value.trim()}`,
-    `Shift Link: ${$("referenceLink").value.trim()}`,
-  ]];
-  const encodedName = state.googleSheetName.replace(/'/g, "''");
-  await gapi.client.sheets.spreadsheets.values.update({
-    spreadsheetId: state.googleSheetId,
-    range: `'${encodedName}'!A1:A5`,
-    valueInputOption: "USER_ENTERED",
-    resource: { values },
-  });
-}
-
 async function createLog() {
   clearError();
-  const videoFile = $("referenceCut").files[0];
-  if (!videoFile) throw new Error("Please choose a reference cut.");
+  const logFile = $("logFile").files[0];
+  const referenceFile = $("referenceCut").files[0];
+  if (!logFile) throw new Error("Please choose a partially completed Fair Use Log Excel file.");
+  if (!referenceFile) throw new Error("Please choose the reference cut.");
 
-  const localFile = state.selectedLogFile || $("logFile").files[0];
-  if (localFile) {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(await localFile.arrayBuffer());
-    const sheet = findFairUseSheet(workbook);
-    const rows = getWorkbookRows(sheet);
-    if (!rows.length) throw new Error("No rows were found with both TC IN and TC OUT timecodes.");
-    await processWorkbook(workbook, sheet, rows, videoFile);
-    state.outputBuffer = await workbook.xlsx.writeBuffer();
-    $("resultTitle").textContent = "Screenshots ready";
-    $("resultSummary").textContent = `${rows.length} midpoint screenshots were generated locally from ${videoFile.name}.`;
-    setStatus("Complete", "complete", 100);
-    return;
+  if (!state.workbook || state.referenceFile !== logFile) {
+    setStatus("Reading Fair Use Log…", "working", 8);
+    const loaded = await loadLocalWorkbook(logFile);
+    state.workbook = loaded.workbook;
+    state.worksheet = loaded.worksheet;
+    state.rows = loaded.rows;
+  }
+  if (!state.videoMetadata || state.referenceFile !== referenceFile) {
+    state.referenceFile = referenceFile;
+    await detectVideoMetadata(referenceFile);
   }
 
-  if (!$("driveSheetUrl").value.trim()) throw new Error("Choose a local Fair Use Log or enter a Google Sheet URL.");
-  const imported = await createGoogleInputWorkbook();
-  await processWorkbook(imported.workbook, imported.sheet, imported.rows, videoFile);
-  state.outputBuffer = await imported.workbook.xlsx.writeBuffer();
-  await writeGoogleHeaderResults();
+  state.midpoints = state.rows.map((item) => calculateMidpoint(item, state.videoMetadata.fps));
+  renderMidpointPreview();
+  const startFrames = parseTimecode(state.videoMetadata.startTimecode, state.videoMetadata.fps);
+  const video = await loadReferenceVideo(referenceFile);
+  const durationSeconds = video.duration;
+  state.images = [];
+  state.outputBuffer = null;
+  $("resultsCard").classList.add("hidden");
+  $("thumbnailGrid").innerHTML = "";
+
+  updateHeaderRows(state.worksheet);
+  for (let index = 0; index < state.midpoints.length; index += 1) {
+    const item = state.midpoints[index];
+    const offsetFrames = item.midpointFrames - startFrames;
+    if (offsetFrames < 0) {
+      throw new Error(`Row ${item.row}: midpoint ${item.midpoint} occurs before the reference cut start timecode ${state.videoMetadata.startTimecode}.`);
+    }
+    const seconds = offsetFrames / state.videoMetadata.fps;
+    if (seconds > durationSeconds + 0.05) {
+      throw new Error(`Row ${item.row}: midpoint ${item.midpoint} is beyond the reference cut duration.`);
+    }
+    setStatus(`Capturing row ${item.row} at ${item.midpoint}…`, "working", 10 + (index / state.midpoints.length) * 85);
+    const bytes = await captureFrame(video, seconds);
+    addScreenshotToExcel(state.worksheet, item.row, bytes);
+    state.images.push({ row: item.row, midpoint: item.midpoint, bytes });
+    appendThumbnailCard(item, bytes);
+  }
+
+  state.outputBuffer = await state.workbook.xlsx.writeBuffer();
   $("resultTitle").textContent = "Screenshots ready";
-  $("resultSummary").textContent = `${imported.rows.length} midpoint screenshots were generated locally. Download the Excel workbook to retain the embedded screenshots.`;
+  $("resultSummary").textContent = `${state.images.length} midpoint screenshot${state.images.length === 1 ? "" : "s"} generated locally from ${referenceFile.name}.`;
+  $("resultsCard").classList.remove("hidden");
   setStatus("Complete", "complete", 100);
 }
 
 async function downloadImages() {
+  if (!state.images.length) return;
   const zip = new JSZip();
-  state.images.forEach((image) => zip.file(`Row${String(image.row).padStart(4, "0")}_${image.midpoint.replace(/[:;]/g, "-")}.jpg`, image.bytes));
+  state.images.forEach((image) => {
+    zip.file(`Row${String(image.row).padStart(4, "0")}_${image.midpoint.replace(/[:;]/g, "-")}.jpg`, image.bytes);
+  });
   downloadBlob(await zip.generateAsync({ type: "blob" }), "Fair_Use_Screenshots.zip");
 }
 
-$("referenceCut").addEventListener("change", () => {
-  state.videoMetadata = null;
-  const file = $("referenceCut").files[0];
+async function handleLogFileChange() {
+  const file = $("logFile").files[0];
+  const token = ++state.logReadToken;
+  state.workbook = null;
+  state.worksheet = null;
+  state.rows = [];
+  state.midpoints = [];
+  $("midpointPreview").classList.add("hidden");
   if (!file) {
-    $("videoMetadataStatus").textContent = "Choose a reference cut. Start timecode and frame rate will be detected automatically when you create the log.";
-    $("videoMetadataStatus").className = "metadata-status";
+    $("selectedLogStatus").textContent = "No Fair Use Log selected.";
+    $("midpointStatus").classList.add("hidden");
     return;
   }
-  $("videoMetadataStatus").textContent = `Reference cut selected: ${file.name}. Metadata will be detected automatically when you create the log.`;
-  $("videoMetadataStatus").className = "metadata-status";
-});
-
-$("logFile").addEventListener("change", () => {
-  state.selectedLogFile = $("logFile").files[0] || null;
-  if (state.selectedLogFile) {
-    $("driveSheetUrl").value = "";
-    $("selectedLogStatus").textContent = `Selected local Fair Use Log: ${state.selectedLogFile.name}`;
-  }
-});
-
-$("driveSheetUrl").addEventListener("input", () => {
-  if ($("driveSheetUrl").value.trim()) {
-    state.selectedLogFile = null;
-    $("logFile").value = "";
-    $("selectedLogStatus").textContent = "Google Sheet URL entered. Connect Google when ready.";
-  }
-});
-
-$("connectGoogleButton").addEventListener("click", async () => {
   try {
-    await connectGoogle();
-    if ($("driveSheetUrl").value.trim()) await loadGoogleSheetRows();
+    setStatus("Reading Fair Use Log…", "working", 2);
+    $("selectedLogStatus").textContent = `Reading ${file.name}…`;
+    const loaded = await loadLocalWorkbook(file);
+    if (token !== state.logReadToken) return;
+    state.workbook = loaded.workbook;
+    state.worksheet = loaded.worksheet;
+    state.rows = loaded.rows;
+    $("selectedLogStatus").textContent = `Selected ${file.name} · ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} with TC IN and TC OUT in columns C and D.`;
+    renderMidpointPreview();
+    setStatus("Fair Use Log ready", "working", 5);
   } catch (error) {
     showError(error);
   }
-});
+}
 
+async function handleReferenceChange() {
+  const file = $("referenceCut").files[0] || null;
+  state.referenceFile = file;
+  state.videoMetadata = null;
+  revokeVideo();
+  if (!file) {
+    $("videoMetadataStatus").textContent = "Choose a reference cut. Its embedded start timecode and frame rate will be detected automatically.";
+    $("videoMetadataStatus").className = "metadata-status";
+    renderMidpointPreview();
+    return;
+  }
+  try {
+    await detectVideoMetadata(file);
+    setStatus("Reference cut metadata ready", "working", 7);
+  } catch (error) {
+    $("videoMetadataStatus").textContent = error.message;
+    $("videoMetadataStatus").className = "metadata-status";
+    showError(error);
+  }
+}
+
+$("logFile").addEventListener("change", () => { void handleLogFileChange(); });
+$("referenceCut").addEventListener("change", () => { void handleReferenceChange(); });
 $("createButton").addEventListener("click", async () => {
   $("createButton").disabled = true;
   try {
@@ -576,13 +709,12 @@ $("createButton").addEventListener("click", async () => {
     $("createButton").disabled = false;
   }
 });
-
 $("downloadButton").addEventListener("click", () => {
   if (!state.outputBuffer) return;
-  downloadBlob(new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "FAIR_USE_GENERATED.xlsx");
+  downloadBlob(
+    new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    "FAIR_USE_GENERATED.xlsx"
+  );
 });
-
-$("downloadImagesButton").addEventListener("click", downloadImages);
+$("downloadImagesButton").addEventListener("click", () => { void downloadImages(); });
 $("cancelButton").addEventListener("click", () => window.location.reload());
-
-initializeGoogle();

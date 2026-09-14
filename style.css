@@ -843,6 +843,57 @@ input:focus, select:focus {
 .metadata-status.success { color: #8af0c4; border-color: rgba(104, 224, 174, .35); }
 .compact-actions { margin-top: 14px; }
 
+.midpoint-preview {
+  margin-top: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(9, 15, 32, .48);
+}
+
+.midpoint-heading {
+  padding: 13px 15px 10px;
+  color: #dfe5ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.midpoint-table {
+  width: 100%;
+  min-width: 650px;
+  border-collapse: collapse;
+  color: #d9e0f8;
+  font-size: 12px;
+}
+
+.midpoint-table th,
+.midpoint-table td {
+  padding: 9px 12px;
+  border-top: 1px solid rgba(161, 181, 234, .1);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.midpoint-table th {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.midpoint-table td:nth-child(1),
+.midpoint-table td:nth-child(3),
+.midpoint-table td:nth-child(4),
+.midpoint-table td:nth-child(5) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.midpoint-note {
+  padding: 10px 15px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .or-divider {
   display: flex;
   align-items: center;
