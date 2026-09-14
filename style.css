@@ -891,6 +891,91 @@ input:focus, select:focus {
 .metadata-status.success { color: #8af0c4; border-color: rgba(104, 224, 174, .35); }
 .compact-actions { margin-top: 14px; }
 
+.review-instructions {
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(110, 140, 255, .24);
+  border-radius: 14px;
+  background: rgba(32, 46, 91, .22);
+  color: #d9e0f8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.review-instructions ol {
+  margin: 9px 0 0 20px;
+  padding: 0;
+}
+
+.review-change-form {
+  display: grid;
+  grid-template-columns: minmax(130px, .42fr) minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 20px;
+}
+
+.review-change-form .field { margin: 0; }
+
+.review-change-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.review-change-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 12px;
+  border: 1px solid rgba(104, 224, 174, .25);
+  border-radius: 10px;
+  background: rgba(20, 60, 57, .2);
+  color: #d9e0f8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.review-change-item .button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.review-close-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 18px 0 14px;
+  color: #d9e0f8;
+  font-size: 13px;
+}
+
+.review-close-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+
+.due-diligence-box {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.due-diligence-box h3 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -.025em;
+}
+
+.due-diligence-box p {
+  margin: 8px 0 16px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .midpoint-preview {
   margin-top: 16px;
   overflow-x: auto;
@@ -991,6 +1076,7 @@ input:focus, select:focus {
   .tracker-details, .logger-test-grid { grid-template-columns: 1fr; }
   .adjustment-row { grid-template-columns: 1fr; }
   .manual-adjustment-range { grid-template-columns: 1fr; }
+  .review-change-form { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 721px) and (max-width: 980px) {

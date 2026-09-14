@@ -1,18 +1,18 @@
 /*
-  Fair Use Log 3.0
+  Fair Use Log 3.3
 
-  This first browser test deliberately does not use FFmpeg or Google APIs.
-  It proves the local Excel workflow with two browser capabilities:
-
-  - MediaInfo.js reads the reference cut's embedded start timecode and frame rate.
-  - The browser's native <video> element seeks the reference cut and Canvas captures
-    the complete frame, including a visible BITC in the upper-right corner.
-
-  The workbook and video remain local to the user's browser. Google Sheet input and
-  due-diligence document generation can be added after this local Excel path works.
+  The browser keeps the Excel workbook and reference cut local. FFmpeg.wasm is used
+  for the same metadata probe that the Python version uses; the browser's native
+  video element then seeks the exact offset and Canvas captures the visible BITC.
+  The first workbook is a review copy. The final workbook is not built until the
+  user has reviewed it, closed Excel, and either entered or declined replacements.
 */
 
-const FAIR_USE_LOG_VERSION = "3.2";
+const FAIR_USE_LOG_VERSION = "3.3";
+const FFMPEG_VERSION = "0.12.10";
+const FFMPEG_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd/ffmpeg.js`;
+const FFMPEG_CORE_BASE_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
+const FFMPEG_WORKER_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd/814.ffmpeg.js`;
 
 const HEADER_ROW = 6;
 const DATA_START_ROW = 7;
@@ -38,9 +38,17 @@ const state = {
   video: null,
   videoUrl: null,
   outputBuffer: null,
+  reviewBuffer: null,
+  finalBuffer: null,
+  dueDiligenceZip: null,
   images: [],
+  reviewChanges: [],
+  sourceWorkbookBuffer: null,
   previewUrls: [],
   logReadToken: 0,
+  ffmpeg: null,
+  ffmpegClassWorkerUrl: null,
+  ffmpegLogLines: [],
 };
 
 document.querySelectorAll("[data-app-version]").forEach((element) => {
@@ -317,6 +325,41 @@ function resultTracks(result) {
   return Array.isArray(tracks) ? tracks : [tracks].filter(Boolean);
 }
 
+function allTrackValues(tracks, namePattern) {
+  const values = [];
+  tracks.forEach((track) => {
+    Object.entries(track || {}).forEach(([key, value]) => {
+      if (namePattern.test(key) && cellText(value)) values.push(value);
+    });
+  });
+  return values;
+}
+
+function canonicalFrameRate(fps) {
+  if (!Number.isFinite(fps)) return null;
+  if (Math.abs(fps - 23.98) < 0.02 || Math.abs(fps - 23.976) < 0.02) return 23.976;
+  if (Math.abs(fps - 29.97) < 0.03 || Math.abs(fps - 29.98) < 0.03) return 29.97;
+  if (Math.abs(fps - 59.94) < 0.03 || Math.abs(fps - 59.96) < 0.03) return 59.94;
+  return fps;
+}
+
+function makeVideoMetadata({ fps, startTimecode, width = null, height = null, duration = null, source = "metadata" }) {
+  const normalizedFps = canonicalFrameRate(fps);
+  const normalizedStart = extractTimecode(startTimecode);
+  if (!normalizedFps) throw new Error("The reference cut opened, but its frame rate was not found in the media metadata.");
+  if (!normalizedStart) throw new Error("The reference cut opened, but its embedded start timecode was not found. The visible BITC is used in the screenshot, but the timing offset still needs a readable start timecode.");
+  if (!isTimecode(normalizedStart)) throw new Error(`The detected start timecode is not a complete timecode: ${normalizedStart}`);
+  return {
+    fps: normalizedFps,
+    fpsLabel: displayFrameRate(normalizedFps),
+    startTimecode: normalizedStart,
+    width: Number(width) || null,
+    height: Number(height) || null,
+    duration: Number(duration) || null,
+    source,
+  };
+}
+
 function metadataFromMediaInfo(result) {
   const tracks = resultTracks(result);
   const general = findTrack(tracks, "General");
@@ -330,23 +373,12 @@ function metadataFromMediaInfo(result) {
     trackValue(video, ["TimeCode_FirstFrame", "TimeCode_FirstFrame_Original", "TimeCode_Start"]),
     trackValue(general, ["TimeCode_FirstFrame", "TimeCode", "TimeCode_Start"]),
     trackValue(video, ["TimeCode"]),
+    ...allTrackValues(tracks, /time.?code|time.?code.?first|start.?time/i),
   ].map(extractTimecode).find(Boolean) || "";
   const width = Number(trackValue(video, ["Width"])) || null;
   const height = Number(trackValue(video, ["Height"])) || null;
   const duration = parseRate(trackValue(general, ["Duration"])) || null;
-
-  if (!fps) throw new Error("The reference cut opened, but its frame rate was not found in the media metadata.");
-  if (!startTimecode) throw new Error("The reference cut opened, but its embedded start timecode was not found. The visible BITC is used in the screenshot, but the timing offset still needs a readable start timecode.");
-  if (!isTimecode(startTimecode)) throw new Error(`The detected start timecode is not a complete timecode: ${startTimecode}`);
-
-  return {
-    fps,
-    fpsLabel: displayFrameRate(fps),
-    startTimecode,
-    width,
-    height,
-    duration,
-  };
+  return makeVideoMetadata({ fps, startTimecode, width, height, duration, source: "MediaInfo" });
 }
 
 function mediaInfoFactory() {
@@ -357,7 +389,7 @@ function mediaInfoFactory() {
   return null;
 }
 
-async function detectVideoMetadata(file) {
+async function detectWithMediaInfo(file) {
   const factory = mediaInfoFactory();
   if (!factory) throw new Error("The browser media metadata library did not load. Refresh the page and try again.");
 
@@ -383,6 +415,179 @@ async function detectVideoMetadata(file) {
     return metadata;
   } finally {
     if (mediaInfo?.close) mediaInfo.close();
+  }
+}
+
+function ffmpegClass() {
+  return window.FFmpegWASM?.FFmpeg || window.FFmpeg?.FFmpeg || (typeof window.FFmpeg === "function" ? window.FFmpeg : null);
+}
+
+function loadExternalScript(url) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-fair-use-script="' + url + '"]');
+    if (existing) {
+      if (existing.dataset.loaded === "true") resolve();
+      else existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", () => reject(new Error("Could not load " + url + ".")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = url;
+    script.async = true;
+    script.dataset.fairUseScript = url;
+    script.addEventListener("load", () => { script.dataset.loaded = "true"; resolve(); }, { once: true });
+    script.addEventListener("error", () => reject(new Error("Could not load " + url + ".")), { once: true });
+    document.head.appendChild(script);
+  });
+}
+
+async function toBlobURL(url, mimeType) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Could not download " + url + " (" + response.status + ").");
+  const blob = await response.blob();
+  return URL.createObjectURL(new Blob([blob], { type: mimeType }));
+}
+
+function recordFfmpegLog(message) {
+  const text = cellText(message);
+  if (!text) return;
+  state.ffmpegLogLines.push(text);
+  while (state.ffmpegLogLines.length > 120) state.ffmpegLogLines.shift();
+  if (/timecode|duration:|stream #|input #|video:/i.test(text)) logActivity("FFmpeg: " + text);
+}
+
+async function loadFfmpeg() {
+  if (state.ffmpeg) return state.ffmpeg;
+  await activity("Loading FFmpeg " + FFMPEG_VERSION + " locally for the metadata probe. This may take a moment.");
+  if (!ffmpegClass()) await loadExternalScript(FFMPEG_SCRIPT_URL);
+  const FFmpeg = ffmpegClass();
+  if (!FFmpeg) throw new Error("The FFmpeg browser library did not load. Check the browser's network access and refresh the page.");
+
+  let coreURL;
+  let wasmURL;
+  let classWorkerURL;
+  try {
+    coreURL = await toBlobURL(FFMPEG_CORE_BASE_URL + "/ffmpeg-core.js", "text/javascript");
+    wasmURL = await toBlobURL(FFMPEG_CORE_BASE_URL + "/ffmpeg-core.wasm", "application/wasm");
+    classWorkerURL = await toBlobURL(FFMPEG_WORKER_URL, "text/javascript");
+    const ffmpeg = new FFmpeg();
+    if (typeof ffmpeg.on === "function") ffmpeg.on("log", ({ message }) => recordFfmpegLog(message));
+    await ffmpeg.load({ coreURL, wasmURL, classWorkerURL });
+    state.ffmpeg = ffmpeg;
+    state.ffmpegClassWorkerUrl = classWorkerURL;
+    await activity("FFmpeg loaded. It will read the reference cut metadata without uploading the video.", "success");
+    return ffmpeg;
+  } catch (error) {
+    [coreURL, wasmURL, classWorkerURL].filter(Boolean).forEach((url) => URL.revokeObjectURL(url));
+    throw new Error("FFmpeg could not start in this browser: " + (error.message || error));
+  }
+}
+
+function secondsFromDuration(value) {
+  const text = cellText(value);
+  const match = text.match(/(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?/);
+  if (!match) return null;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) + Number("0." + (match[4] || "0"));
+}
+
+function metadataFromFfmpegProbe(probe) {
+  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
+  const video = streams.find((stream) => cellText(stream?.codec_type).toLowerCase() === "video") || streams[0] || {};
+  const formatTags = probe?.format?.tags || {};
+  const streamTags = video?.tags || {};
+  const tagValues = [...Object.entries(streamTags), ...Object.entries(formatTags)];
+  const tagTimecode = tagValues
+    .filter(([key]) => /time.?code|start.?time/i.test(key))
+    .map(([, value]) => extractTimecode(value))
+    .find(Boolean) || "";
+  const fps = parseRate(video.avg_frame_rate) || parseRate(video.r_frame_rate);
+  return makeVideoMetadata({
+    fps,
+    startTimecode: tagTimecode,
+    width: video.width,
+    height: video.height,
+    duration: probe?.format?.duration,
+    source: "FFmpeg",
+  });
+}
+
+function metadataFromFfmpegLog(lines) {
+  const report = lines.join("\n");
+  const firstTimecode = report.match(/time.?code\s*[:=]\s*([^\s,]+)/i);
+  const secondTimecode = report.match(/time.?code[^\n]*?(\d{2}:\d{2}:\d{2}[:;]\d{2})/i);
+  const startTimecode = extractTimecode(firstTimecode?.[1] || "") || extractTimecode(secondTimecode?.[1] || "");
+  const fpsMatch = report.match(/(\d+(?:\.\d+)?)\s+(?:fps|tbr)\b/i);
+  const resolution = report.match(/\b(\d{3,5})x(\d{3,5})\b/);
+  const durationMatch = report.match(/Duration:\s*([^,\s]+)/i);
+  return makeVideoMetadata({
+    fps: parseRate(fpsMatch?.[1]),
+    startTimecode,
+    width: resolution?.[1],
+    height: resolution?.[2],
+    duration: secondsFromDuration(durationMatch?.[1]),
+    source: "FFmpeg report",
+  });
+}
+
+async function detectWithFfmpeg(file) {
+  setStatus("Reading reference cut metadata…", "working", 4);
+  $("videoMetadataStatus").textContent = "FFmpeg is reading the embedded start timecode and frame rate…";
+  $("videoMetadataStatus").className = "metadata-status";
+  const ffmpeg = await loadFfmpeg();
+  const inputName = "reference-" + Date.now() + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const outputName = "fair-use-metadata.json";
+  state.ffmpegLogLines = [];
+  await activity("Writing " + file.name + " into FFmpeg's private browser memory.");
+  await ffmpeg.writeFile(inputName, new Uint8Array(await file.arrayBuffer()));
+
+  let metadata = null;
+  if (typeof ffmpeg.ffprobe === "function") {
+    try {
+      await activity("Running the FFprobe metadata query used by the Python version.");
+      await ffmpeg.ffprobe([
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=avg_frame_rate,r_frame_rate,width,height:stream_tags=timecode:format=duration:format_tags=timecode",
+        "-of", "json",
+        inputName,
+        "-o", outputName,
+      ]);
+      const raw = await ffmpeg.readFile(outputName);
+      metadata = metadataFromFfmpegProbe(JSON.parse(new TextDecoder().decode(raw)));
+    } catch (error) {
+      await activity("FFprobe JSON did not produce usable metadata: " + (error.message || error), "warning");
+    }
+  } else {
+    await activity("This FFmpeg browser build has no FFprobe method; using its media report instead.", "warning");
+  }
+
+  if (!metadata) {
+    state.ffmpegLogLines = [];
+    await activity("Reading FFmpeg's media report for the embedded start timecode and frame rate.");
+    try { await ffmpeg.exec(["-hide_banner", "-i", inputName]); } catch { /* input metadata is logged before the no-output error */ }
+    metadata = metadataFromFfmpegLog(state.ffmpegLogLines);
+  }
+
+  state.videoMetadata = metadata;
+  $("videoMetadataStatus").textContent = "Detected automatically — Start TC: " + metadata.startTimecode + " · Frame rate: " + metadata.fpsLabel + " fps" +
+    (metadata.width && metadata.height ? " · " + metadata.width + "×" + metadata.height : "") + " · " + metadata.source;
+  $("videoMetadataStatus").className = "metadata-status success";
+  await activity("Detected start TC " + metadata.startTimecode + " and " + metadata.fpsLabel + " fps with " + metadata.source + ".", "success");
+  renderMidpointPreview();
+  return metadata;
+}
+
+async function detectVideoMetadata(file) {
+  try {
+    return await detectWithFfmpeg(file);
+  } catch (ffmpegError) {
+    await activity("FFmpeg metadata path failed: " + (ffmpegError.message || ffmpegError), "warning");
+    try {
+      await activity("Trying the browser metadata reader as a fallback.");
+      return await detectWithMediaInfo(file);
+    } catch (mediaInfoError) {
+      throw new Error("FFmpeg could not read this reference cut (" + (ffmpegError.message || ffmpegError) + "). MediaInfo fallback also failed (" + (mediaInfoError.message || mediaInfoError) + ").");
+    }
   }
 }
 
@@ -468,14 +673,15 @@ async function loadLocalWorkbook(file) {
   if (!window.ExcelJS?.Workbook) throw new Error("The Excel workbook library did not load. Refresh the page and try again.");
   await activity(`Opening Excel workbook: ${file.name}`);
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(await file.arrayBuffer());
+  const sourceBuffer = await file.arrayBuffer();
+  await workbook.xlsx.load(sourceBuffer);
   await activity(`Workbook opened. Tabs found: ${workbook.worksheets.length}.`);
   const worksheet = findFairUseSheet(workbook);
   await activity(`Using worksheet: ${worksheet.name}.`);
   const rows = getWorkbookRows(worksheet);
   if (!rows.length) throw new Error("No rows were found with both TC IN and TC OUT timecodes in columns C and D.");
   await activity(`Found ${rows.length} row${rows.length === 1 ? "" : "s"} with TC IN and TC OUT.`);
-  return { workbook, worksheet, rows };
+  return { workbook, worksheet, rows, sourceBuffer };
 }
 
 function revokeVideo() {
@@ -612,8 +818,9 @@ async function captureFrame(video, seconds) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-function addScreenshotToExcel(sheet, rowNumber, bytes) {
-  const imageId = state.workbook.addImage({ buffer: bytes.buffer, extension: "jpeg" });
+function addScreenshotToExcel(workbook, sheet, rowNumber, bytes) {
+  const imageBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const imageId = workbook.addImage({ buffer: imageBuffer, extension: "jpeg" });
   sheet.addImage(imageId, {
     tl: { col: 0, row: rowNumber - 1 },
     ext: { width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT },
@@ -636,6 +843,196 @@ function appendThumbnailCard(item, bytes) {
   $("thumbnailGrid").append(card);
 }
 
+function clearPreviewUrls() {
+  state.previewUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.previewUrls = [];
+}
+
+function refreshThumbnailGrid() {
+  clearPreviewUrls();
+  $("thumbnailGrid").innerHTML = "";
+  state.images.forEach((image) => {
+    const item = state.midpoints.find((candidate) => candidate.row === image.row) || image;
+    appendThumbnailCard({ ...item, midpoint: image.midpoint }, image.bytes);
+  });
+}
+
+async function buildWorkbookBuffer() {
+  if (!state.sourceWorkbookBuffer) throw new Error("The original Excel workbook is no longer available in the browser.");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(state.sourceWorkbookBuffer);
+  const worksheet = findFairUseSheet(workbook);
+  updateHeaderRows(worksheet);
+  state.images.forEach((image) => addScreenshotToExcel(workbook, worksheet, image.row, image.bytes));
+  state.workbook = workbook;
+  state.worksheet = worksheet;
+  return workbook.xlsx.writeBuffer();
+}
+
+function renderReviewChanges() {
+  const list = $("reviewChangeList");
+  const status = $("reviewStatus");
+  list.innerHTML = "";
+  if (!state.reviewChanges.length) {
+    status.textContent = "No replacement rows entered. If the review workbook looks correct, continue without changes.";
+    return;
+  }
+  status.textContent = state.reviewChanges.length + " replacement row" + (state.reviewChanges.length === 1 ? "" : "s") + " queued.";
+  state.reviewChanges.forEach((change) => {
+    const item = document.createElement("div");
+    item.className = "review-change-item";
+    const text = document.createElement("span");
+    text.textContent = "Row " + change.row + " → " + change.midpoint;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "button danger";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => {
+      state.reviewChanges = state.reviewChanges.filter((candidate) => candidate.row !== change.row);
+      renderReviewChanges();
+    });
+    item.append(text, remove);
+    list.appendChild(item);
+  });
+}
+
+function addReviewChange() {
+  const row = Number.parseInt($("reviewRow").value.trim(), 10);
+  const midpoint = normalizeTimecode($("reviewTc").value);
+  if (!Number.isInteger(row) || row < DATA_START_ROW) throw new Error("Enter a valid worksheet row number.");
+  if (!state.midpoints.some((item) => item.row === row)) throw new Error("Row " + row + " was not one of the rows processed.");
+  if (!isTimecode(midpoint)) throw new Error("Enter the replacement as a complete timecode, for example 01:33:00:00.");
+  const midpointFrames = parseTimecode(midpoint, state.videoMetadata.fps);
+  state.reviewChanges = state.reviewChanges.filter((change) => change.row !== row);
+  state.reviewChanges.push({ row, midpoint, midpointFrames });
+  state.reviewChanges.sort((a, b) => a.row - b.row);
+  $("reviewRow").value = "";
+  $("reviewTc").value = "";
+  renderReviewChanges();
+  logActivity("Queued replacement screenshot for row " + row + " at " + midpoint + ".", "success");
+}
+
+function safeFilename(value) {
+  const cleaned = cellText(value).replace(/[<>:"/\\|?*]+/g, "-").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "");
+  return (cleaned || "Unknown Source").slice(0, 100);
+}
+
+function docxLibrary() {
+  return window.docx || window.Docx || null;
+}
+
+async function prepareDueDiligence() {
+  const library = docxLibrary();
+  if (!library?.Document || !library?.Packer || !library?.ImageRun) {
+    throw new Error("The browser Word document library did not load. Refresh the page and try again.");
+  }
+  const groups = new Map();
+  state.rows.forEach((row) => {
+    if (!row.source) return;
+    const image = state.images.find((candidate) => candidate.row === row.row);
+    if (!image) return;
+    if (!groups.has(row.source)) groups.set(row.source, []);
+    groups.get(row.source).push({ row, image });
+  });
+  if (!groups.size) throw new Error("No screenshots have a Source value in column G, so no Due Diligence logs can be prepared.");
+
+  const zip = new JSZip();
+  const {
+    Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType,
+  } = library;
+  await activity("Preparing Due Diligence logs from the final workbook.");
+  let formCount = 0;
+  for (const [source, items] of groups.entries()) {
+    const children = [];
+    const centered = (text, size = 28) => new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: String(text || ""), bold: true, size })],
+    });
+    const body = (text, bold = false) => new Paragraph({
+      children: [new TextRun({ text: String(text || ""), bold })],
+    });
+    children.push(centered(source + " DUE DILIGENCE OUTREACH FORM"));
+    children.push(body(""));
+    children.push(centered("SERIES TITLE: " + ($("showTitle").value.trim() || "SHOW TITLE")));
+    children.push(centered("EPISODE TITLE: " + ($("episodeTitle").value.trim() || "EPISODE")));
+    children.push(centered("COMPANY INFO: " + $("companyLlc").value.trim()));
+    children.push(body(""));
+    children.push(centered("MATERIAL TO FAIR USE:"));
+    for (const item of items) {
+      children.push(new Paragraph({
+        children: [new ImageRun({
+          data: item.image.bytes,
+          type: "jpg",
+          transformation: { width: 556, height: 313 },
+        })],
+      }));
+      children.push(body("Time Codes Used: " + item.row.tcIn + " - " + item.row.tcOut, true));
+      children.push(body(""));
+    }
+    children.push(centered("DESCRIPTION:"));
+    items.forEach((item) => {
+      children.push(body(item.row.tcIn + " - " + item.row.tcOut + ": " + (item.row.description || "")));
+    });
+    children.push(body(""));
+    children.push(centered("DUE DILIGENCE:"));
+    for (let blank = 0; blank < 6; blank += 1) children.push(body(""));
+
+    const document = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(document);
+    zip.file(safeFilename(source) + " - DD Form.docx", await blob.arrayBuffer());
+    formCount += 1;
+    await activity("Prepared Due Diligence form for " + source + ".", "success");
+  }
+  state.dueDiligenceZip = await zip.generateAsync({ type: "blob" });
+  $("dueDiligenceSummary").textContent = "Prepared " + formCount + " Due Diligence Word form" + (formCount === 1 ? "" : "s") + " from the final screenshots.";
+  $("downloadDueDiligenceButton").classList.remove("hidden");
+  logActivity("Due Diligence preparation finished. " + formCount + " Word form" + (formCount === 1 ? "" : "s") + " are ready.", "success");
+}
+
+async function applyReviewChanges() {
+  const button = $("applyReviewButton");
+  if (!$("reviewWorkbookClosed").checked) throw new Error("Close the review workbook in Excel, then confirm that it is closed.");
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = "Applying…";
+  try {
+    clearError();
+    await activity("Review workbook closed. Applying the requested row changes.");
+    const startFrames = parseTimecode(state.videoMetadata.startTimecode, state.videoMetadata.fps);
+    for (let index = 0; index < state.reviewChanges.length; index += 1) {
+      const change = state.reviewChanges[index];
+      const rowItem = state.midpoints.find((item) => item.row === change.row);
+      const offsetFrames = change.midpointFrames - startFrames;
+      if (offsetFrames < 0) throw new Error("Row " + change.row + ": replacement midpoint " + change.midpoint + " is before the reference cut start timecode.");
+      const seconds = offsetFrames / state.videoMetadata.fps;
+      if (seconds > state.video.duration + 0.05) throw new Error("Row " + change.row + ": replacement midpoint " + change.midpoint + " is beyond the reference cut duration.");
+      await activity("Row " + change.row + ": generating replacement screenshot at " + change.midpoint + ".");
+      setStatus("Replacing row " + change.row + "…", "working", 10 + ((index + 1) / Math.max(1, state.reviewChanges.length)) * 55);
+      const bytes = await captureFrame(state.video, seconds);
+      const image = state.images.find((candidate) => candidate.row === change.row);
+      if (!image) throw new Error("Could not find the original screenshot for row " + change.row + ".");
+      image.bytes = bytes;
+      image.midpoint = change.midpoint;
+      rowItem.midpoint = change.midpoint;
+      rowItem.midpointFrames = change.midpointFrames;
+      await activity("Row " + change.row + ": replacement screenshot captured.", "success");
+    }
+    refreshThumbnailGrid();
+    await activity("Saving the final Excel workbook after review.");
+    state.finalBuffer = await buildWorkbookBuffer();
+    state.outputBuffer = state.finalBuffer;
+    await activity("Final workbook saved. Screenshots are embedded in column A.", "success");
+    $("reviewCard").classList.add("hidden");
+    $("resultTitle").textContent = "Final Fair Use Log ready";
+    $("resultSummary").textContent = state.images.length + " screenshot" + (state.images.length === 1 ? "" : "s") + " embedded in column A. The review stage is complete.";
+    $("resultsCard").classList.remove("hidden");
+    setStatus("Final workbook ready", "complete", 100);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
 async function createLog() {
   clearActivityLog();
   await activity("Create Fair Use Log clicked.");
@@ -653,6 +1050,7 @@ async function createLog() {
     state.workbook = loaded.workbook;
     state.worksheet = loaded.worksheet;
     state.rows = loaded.rows;
+    state.sourceWorkbookBuffer = loaded.sourceBuffer;
     state.logFile = logFile;
   } else {
     await activity(`Using the already-read workbook with ${state.rows.length} row${state.rows.length === 1 ? "" : "s"}.`);
@@ -674,7 +1072,13 @@ async function createLog() {
   const durationSeconds = video.duration;
   state.images = [];
   state.outputBuffer = null;
+  state.reviewBuffer = null;
+  state.finalBuffer = null;
+  state.reviewChanges = [];
+  $("reviewWorkbookClosed").checked = false;
+  $("applyReviewButton").disabled = true;
   $("resultsCard").classList.add("hidden");
+  $("reviewCard").classList.add("hidden");
   $("thumbnailGrid").innerHTML = "";
 
   updateHeaderRows(state.worksheet);
@@ -692,18 +1096,18 @@ async function createLog() {
     setStatus(`Capturing row ${item.row} at ${item.midpoint}…`, "working", 10 + (index / state.midpoints.length) * 85);
     const bytes = await captureFrame(video, seconds);
     await activity(`Row ${item.row}: frame captured. Embedding screenshot in column A.`, "success");
-    addScreenshotToExcel(state.worksheet, item.row, bytes);
+    addScreenshotToExcel(state.workbook, state.worksheet, item.row, bytes);
     state.images.push({ row: item.row, midpoint: item.midpoint, bytes });
     appendThumbnailCard(item, bytes);
   }
 
-  await activity("All screenshots are embedded. Building the generated Excel download.");
-  state.outputBuffer = await state.workbook.xlsx.writeBuffer();
-  await activity("Generated Excel file is ready for download.", "success");
-  $("resultTitle").textContent = "Screenshots ready";
-  $("resultSummary").textContent = `${state.images.length} midpoint screenshot${state.images.length === 1 ? "" : "s"} generated locally from ${referenceFile.name}.`;
-  $("resultsCard").classList.remove("hidden");
-  setStatus("Complete", "complete", 100);
+ await activity("All screenshots are embedded in column A. Building the review workbook.");
+ state.reviewBuffer = await state.workbook.xlsx.writeBuffer();
+ await activity("Review workbook saved. Download it, open it, and review the screenshots before continuing.", "success");
+ $("reviewStatus").textContent = "Review workbook is ready. Download and open it, note rows that need changes, close Excel, then continue below.";
+ renderReviewChanges();
+ $("reviewCard").classList.remove("hidden");
+ setStatus("Review workbook ready", "complete", 100);
 }
 
 async function downloadImages() {
@@ -723,6 +1127,16 @@ async function handleLogFileChange() {
   state.logFile = null;
   state.rows = [];
   state.midpoints = [];
+  state.sourceWorkbookBuffer = null;
+  state.images = [];
+  state.reviewChanges = [];
+  state.reviewBuffer = null;
+  state.finalBuffer = null;
+  state.outputBuffer = null;
+  $("reviewWorkbookClosed").checked = false;
+  $("applyReviewButton").disabled = true;
+  $("reviewCard").classList.add("hidden");
+  $("resultsCard").classList.add("hidden");
   $("midpointPreview").classList.add("hidden");
   if (!file) {
     $("selectedLogStatus").textContent = "No Fair Use Log selected.";
@@ -739,6 +1153,7 @@ async function handleLogFileChange() {
     state.worksheet = loaded.worksheet;
     state.logFile = file;
     state.rows = loaded.rows;
+    state.sourceWorkbookBuffer = loaded.sourceBuffer;
     $("selectedLogStatus").textContent = `Selected ${file.name} · ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} with TC IN and TC OUT in columns C and D.`;
     renderMidpointPreview();
     setStatus("Fair Use Log ready", "working", 5);
@@ -797,6 +1212,49 @@ $("downloadImagesButton").addEventListener("click", () => {
   logActivity("Preparing the screenshots ZIP.");
   void downloadImages();
 });
+$("downloadReviewButton").addEventListener("click", () => {
+  if (!state.reviewBuffer) return;
+  logActivity("Downloading the review workbook.", "success");
+  downloadBlob(
+    new Blob([state.reviewBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    "FAIR_USE_REVIEW.xlsx"
+  );
+});
+$("addReviewChangeButton").addEventListener("click", () => {
+  try {
+    clearError();
+    addReviewChange();
+  } catch (error) {
+    showError(error);
+  }
+});
+$("reviewWorkbookClosed").addEventListener("change", () => {
+  $("applyReviewButton").disabled = !$("reviewWorkbookClosed").checked;
+});
+$("applyReviewButton").addEventListener("click", async () => {
+  try {
+    await applyReviewChanges();
+  } catch (error) {
+    showError(error);
+  }
+});
+$("prepareDueDiligenceButton").addEventListener("click", async () => {
+  const button = $("prepareDueDiligenceButton");
+  button.disabled = true;
+  try {
+    clearError();
+    await prepareDueDiligence();
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+$("downloadDueDiligenceButton").addEventListener("click", () => {
+  if (!state.dueDiligenceZip) return;
+  logActivity("Downloading the Due Diligence ZIP.", "success");
+  downloadBlob(state.dueDiligenceZip, "FAIR_USE_DUE_DILIGENCE_FORMS.zip");
+});
 $("cancelButton").addEventListener("click", () => window.location.reload());
 
 if (window.ExcelJS?.Workbook) {
@@ -808,6 +1266,11 @@ if (window.JSZip) {
   logActivity("Screenshot ZIP library loaded.", "success");
 } else {
   logActivity("Screenshot ZIP library is not available.", "warning");
+}
+if (docxLibrary()) {
+  logActivity("Word document library loaded.", "success");
+} else {
+  logActivity("Word document library is not available. Due Diligence preparation will be unavailable.", "warning");
 }
 if (mediaInfoFactory()) {
   logActivity("MediaInfo metadata library loaded.", "success");

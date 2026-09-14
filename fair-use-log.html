@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">FAIR USE WORKFLOW TOOL</div>
-        <h1>Fair Use Log <span class="version-tag" data-app-version>3.1</span></h1>
+        <h1>Fair Use Log <span class="version-tag" data-app-version>3.3</span></h1>
         <p>Calculate midpoint timecodes and capture reference-cut frames locally.</p>
       </div>
       <div class="hero-actions">
@@ -82,6 +82,44 @@
       <div class="logger-status error hidden" id="errorDetails" aria-live="assertive"></div>
     </section>
 
+    <section class="card logger-card hidden" id="reviewCard">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 03</div>
+          <h2>Review screenshots</h2>
+          <p>Download and open the review workbook. Check the screenshots in column A, note any row that needs a different midpoint, then close the workbook before continuing.</p>
+        </div>
+      </div>
+      <div class="review-instructions">
+        <strong>Review process</strong>
+        <ol>
+          <li>Download the review workbook and open it in Excel.</li>
+          <li>Write down each row number that needs changing and the replacement midpoint timecode.</li>
+          <li>Close Excel, enter those changes below, and apply them.</li>
+        </ol>
+      </div>
+      <div class="actions">
+        <button class="button secondary" id="downloadReviewButton" type="button">Download Review Workbook</button>
+      </div>
+      <div class="review-change-form">
+        <div class="field">
+          <label for="reviewRow">Row to change</label>
+          <input id="reviewRow" type="text" inputmode="numeric" placeholder="Example: 14">
+        </div>
+        <div class="field">
+          <label for="reviewTc">Replacement midpoint TC</label>
+          <input id="reviewTc" type="text" placeholder="Example: 01:33:00:00">
+        </div>
+        <button class="button secondary" id="addReviewChangeButton" type="button">Add Row Change</button>
+      </div>
+      <div class="review-status" id="reviewStatus">No replacement rows entered.</div>
+      <div class="review-change-list" id="reviewChangeList"></div>
+      <label class="review-close-check"><input id="reviewWorkbookClosed" type="checkbox"> I have closed the review workbook in Excel.</label>
+      <div class="actions">
+        <button class="button primary" id="applyReviewButton" type="button" disabled>Apply Changes &amp; Save Final Workbook</button>
+      </div>
+    </section>
+
     <section class="card logger-card hidden" id="resultsCard">
       <div class="logger-heading">
         <div>
@@ -96,11 +134,20 @@
         <button class="button secondary" id="downloadImagesButton" type="button">Download Screenshots ZIP</button>
       </div>
       <div class="logger-status">The Excel download contains the generated screenshots embedded in column A.</div>
+      <div class="due-diligence-box" id="dueDiligenceBox">
+        <h3>Due Diligence preparation</h3>
+        <p id="dueDiligenceSummary">After the final workbook is saved, prepare one Word form per Source in column G.</p>
+        <div class="actions">
+          <button class="button secondary" id="prepareDueDiligenceButton" type="button">Prepare Due Diligence Logs</button>
+          <button class="button secondary hidden" id="downloadDueDiligenceButton" type="button">Download Due Diligence ZIP</button>
+        </div>
+      </div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@9.5.1/dist/index.iife.js"></script>
   <script src="https://unpkg.com/mediainfo.js@0.3.7/dist/umd/index.min.js"></script>
   <script src="fair-use-log.js"></script>
 </body>
