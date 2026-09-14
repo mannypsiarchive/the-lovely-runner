@@ -765,6 +765,54 @@ input:focus, select:focus {
   font-size: 13px;
 }
 
+.activity-panel {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(6, 11, 25, .62);
+  overflow: hidden;
+}
+
+.activity-panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 15px;
+  border-bottom: 1px solid rgba(161, 181, 234, .1);
+  color: #dfe5ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.activity-panel-heading .muted-inline {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.activity-log {
+  max-height: 235px;
+  padding: 8px 15px 10px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.activity-entry {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  color: #c5cde6;
+}
+
+.activity-time { color: #7482ac; }
+.activity-entry.success { color: #8af0c4; }
+.activity-entry.warning { color: #f3d68e; }
+.activity-entry.error { color: #ff9fab; }
+
 .review-topline {
   display: flex;
   justify-content: space-between;

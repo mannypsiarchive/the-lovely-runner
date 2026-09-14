@@ -12,7 +12,7 @@
   due-diligence document generation can be added after this local Excel path works.
 */
 
-const FAIR_USE_LOG_VERSION = "3.0";
+const FAIR_USE_LOG_VERSION = "3.1";
 
 const HEADER_ROW = 6;
 const DATA_START_ROW = 7;
@@ -30,6 +30,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   workbook: null,
   worksheet: null,
+  logFile: null,
   rows: [],
   midpoints: [],
   referenceFile: null,
@@ -71,8 +72,45 @@ function setStatus(message, kind = "working", percent = null) {
   }
 }
 
+function activityTime() {
+  return new Date().toLocaleTimeString([], { hour12: false });
+}
+
+function logActivity(message, kind = "info") {
+  const log = $("activityLog");
+  const entry = document.createElement("div");
+  entry.className = `activity-entry ${kind}`;
+  const time = document.createElement("span");
+  time.className = "activity-time";
+  time.textContent = activityTime();
+  const text = document.createElement("span");
+  text.textContent = message;
+  entry.append(time, text);
+  if (log) {
+    log.appendChild(entry);
+    while (log.children.length > 150) log.firstElementChild.remove();
+    log.scrollTop = log.scrollHeight;
+  }
+  console.log(`[Fair Use Log] ${message}`);
+}
+
+function yieldToBrowser() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function activity(message, kind = "info") {
+  logActivity(message, kind);
+  await yieldToBrowser();
+}
+
+function clearActivityLog() {
+  const log = $("activityLog");
+  if (log) log.innerHTML = "";
+}
+
 function showError(error) {
   const message = error instanceof Error ? error.message : String(error || "Unknown error.");
+  logActivity(message, "error");
   setStatus(message, "error", 0);
   if ($("errorDetails")) {
     $("errorDetails").textContent = message;
@@ -325,14 +363,18 @@ async function detectVideoMetadata(file) {
 
   let mediaInfo;
   try {
+    await activity(`Reading reference cut metadata: ${file.name}`);
     mediaInfo = await factory({ format: "object", full: true });
+    await activity("Metadata reader loaded. Scanning the media file for frame rate and start timecode.");
     const readChunk = async (chunkSize, offset) =>
       new Uint8Array(await file.slice(offset, offset + chunkSize).arrayBuffer());
     const result = await mediaInfo.analyzeData(file.size, readChunk);
+    await activity("Media metadata scan finished. Checking the video track.");
     const metadata = metadataFromMediaInfo(result);
     state.videoMetadata = metadata;
     $("videoMetadataStatus").textContent = `Detected automatically — Start TC: ${metadata.startTimecode} · Frame rate: ${metadata.fpsLabel} fps${metadata.width && metadata.height ? ` · ${metadata.width}×${metadata.height}` : ""}`;
     $("videoMetadataStatus").className = "metadata-status success";
+    await activity(`Detected start TC ${metadata.startTimecode} and ${metadata.fpsLabel} fps.`, "success");
     renderMidpointPreview();
     return metadata;
   } finally {
@@ -420,11 +462,15 @@ function renderMidpointPreview() {
 
 async function loadLocalWorkbook(file) {
   if (!window.ExcelJS?.Workbook) throw new Error("The Excel workbook library did not load. Refresh the page and try again.");
+  await activity(`Opening Excel workbook: ${file.name}`);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await file.arrayBuffer());
+  await activity(`Workbook opened. Tabs found: ${workbook.worksheets.length}.`);
   const worksheet = findFairUseSheet(workbook);
+  await activity(`Using worksheet: ${worksheet.name}.`);
   const rows = getWorkbookRows(worksheet);
   if (!rows.length) throw new Error("No rows were found with both TC IN and TC OUT timecodes in columns C and D.");
+  await activity(`Found ${rows.length} row${rows.length === 1 ? "" : "s"} with TC IN and TC OUT.`);
   return { workbook, worksheet, rows };
 }
 
@@ -473,6 +519,7 @@ function waitForVideoMetadata(video) {
 }
 
 async function loadReferenceVideo(file) {
+  await activity(`Opening reference cut in the browser video player: ${file.name}`);
   revokeVideo();
   const video = document.createElement("video");
   video.preload = "auto";
@@ -485,6 +532,7 @@ async function loadReferenceVideo(file) {
   document.body.appendChild(video);
   await waitForVideoMetadata(video);
   state.video = video;
+  await activity(`Reference cut decoded: ${video.videoWidth}×${video.videoHeight}, ${video.duration.toFixed(2)} seconds.`, "success");
   return video;
 }
 
@@ -585,26 +633,38 @@ function appendThumbnailCard(item, bytes) {
 }
 
 async function createLog() {
+  clearActivityLog();
+  await activity("Create Fair Use Log clicked.");
   clearError();
   const logFile = $("logFile").files[0];
   const referenceFile = $("referenceCut").files[0];
   if (!logFile) throw new Error("Please choose a partially completed Fair Use Log Excel file.");
   if (!referenceFile) throw new Error("Please choose the reference cut.");
 
-  if (!state.workbook || state.referenceFile !== logFile) {
+  await activity(`Inputs found: ${logFile.name} and ${referenceFile.name}.`);
+  if (!state.workbook || state.logFile !== logFile) {
     setStatus("Reading Fair Use Log…", "working", 8);
+    await activity("The workbook has not been loaded for this selection. Reading it now.");
     const loaded = await loadLocalWorkbook(logFile);
     state.workbook = loaded.workbook;
     state.worksheet = loaded.worksheet;
     state.rows = loaded.rows;
+    state.logFile = logFile;
+  } else {
+    await activity(`Using the already-read workbook with ${state.rows.length} row${state.rows.length === 1 ? "" : "s"}.`);
   }
   if (!state.videoMetadata || state.referenceFile !== referenceFile) {
     state.referenceFile = referenceFile;
+    await activity("Reference-cut metadata is not ready for this file. Reading it now.");
     await detectVideoMetadata(referenceFile);
+  } else {
+    await activity(`Using detected reference-cut metadata: ${state.videoMetadata.startTimecode} at ${state.videoMetadata.fpsLabel} fps.`);
   }
 
+  await activity(`Calculating ${state.rows.length} midpoint${state.rows.length === 1 ? "" : "s"} from columns C and D.`);
   state.midpoints = state.rows.map((item) => calculateMidpoint(item, state.videoMetadata.fps));
   renderMidpointPreview();
+  await activity(`Calculated ${state.midpoints.length} midpoint${state.midpoints.length === 1 ? "" : "s"}.` , "success");
   const startFrames = parseTimecode(state.videoMetadata.startTimecode, state.videoMetadata.fps);
   const video = await loadReferenceVideo(referenceFile);
   const durationSeconds = video.duration;
@@ -624,14 +684,18 @@ async function createLog() {
     if (seconds > durationSeconds + 0.05) {
       throw new Error(`Row ${item.row}: midpoint ${item.midpoint} is beyond the reference cut duration.`);
     }
+    await activity(`Row ${item.row}: midpoint ${item.midpoint}; seeking ${seconds.toFixed(3)} seconds from the start of the reference cut.`);
     setStatus(`Capturing row ${item.row} at ${item.midpoint}…`, "working", 10 + (index / state.midpoints.length) * 85);
     const bytes = await captureFrame(video, seconds);
+    await activity(`Row ${item.row}: frame captured. Embedding screenshot in column A.`, "success");
     addScreenshotToExcel(state.worksheet, item.row, bytes);
     state.images.push({ row: item.row, midpoint: item.midpoint, bytes });
     appendThumbnailCard(item, bytes);
   }
 
+  await activity("All screenshots are embedded. Building the generated Excel download.");
   state.outputBuffer = await state.workbook.xlsx.writeBuffer();
+  await activity("Generated Excel file is ready for download.", "success");
   $("resultTitle").textContent = "Screenshots ready";
   $("resultSummary").textContent = `${state.images.length} midpoint screenshot${state.images.length === 1 ? "" : "s"} generated locally from ${referenceFile.name}.`;
   $("resultsCard").classList.remove("hidden");
@@ -652,6 +716,7 @@ async function handleLogFileChange() {
   const token = ++state.logReadToken;
   state.workbook = null;
   state.worksheet = null;
+  state.logFile = null;
   state.rows = [];
   state.midpoints = [];
   $("midpointPreview").classList.add("hidden");
@@ -661,12 +726,14 @@ async function handleLogFileChange() {
     return;
   }
   try {
+    await activity(`Excel file selected: ${file.name}.`);
     setStatus("Reading Fair Use Log…", "working", 2);
     $("selectedLogStatus").textContent = `Reading ${file.name}…`;
     const loaded = await loadLocalWorkbook(file);
     if (token !== state.logReadToken) return;
     state.workbook = loaded.workbook;
     state.worksheet = loaded.worksheet;
+    state.logFile = file;
     state.rows = loaded.rows;
     $("selectedLogStatus").textContent = `Selected ${file.name} · ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} with TC IN and TC OUT in columns C and D.`;
     renderMidpointPreview();
@@ -688,6 +755,7 @@ async function handleReferenceChange() {
     return;
   }
   try {
+    await activity(`Reference cut selected: ${file.name}.`);
     await detectVideoMetadata(file);
     setStatus("Reference cut metadata ready", "working", 7);
   } catch (error) {
@@ -700,21 +768,29 @@ async function handleReferenceChange() {
 $("logFile").addEventListener("change", () => { void handleLogFileChange(); });
 $("referenceCut").addEventListener("change", () => { void handleReferenceChange(); });
 $("createButton").addEventListener("click", async () => {
-  $("createButton").disabled = true;
+  const button = $("createButton");
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Working…";
   try {
     await createLog();
   } catch (error) {
     showError(error);
   } finally {
-    $("createButton").disabled = false;
+    button.disabled = false;
+    button.textContent = originalLabel;
   }
 });
 $("downloadButton").addEventListener("click", () => {
   if (!state.outputBuffer) return;
+  logActivity("Downloading the generated Excel file.", "success");
   downloadBlob(
     new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     "FAIR_USE_GENERATED.xlsx"
   );
 });
-$("downloadImagesButton").addEventListener("click", () => { void downloadImages(); });
+$("downloadImagesButton").addEventListener("click", () => {
+  logActivity("Preparing the screenshots ZIP.");
+  void downloadImages();
+});
 $("cancelButton").addEventListener("click", () => window.location.reload());

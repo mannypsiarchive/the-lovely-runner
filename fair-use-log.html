@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">FAIR USE WORKFLOW TOOL</div>
-        <h1>Fair Use Log <span class="version-tag" data-app-version>3.0</span></h1>
+        <h1>Fair Use Log <span class="version-tag" data-app-version>3.1</span></h1>
         <p>Calculate midpoint timecodes and capture reference-cut frames locally.</p>
       </div>
       <div class="hero-actions">
@@ -69,6 +69,15 @@
       <div class="progress" aria-live="polite">
         <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
         <div class="progress-text" id="progressText">Ready</div>
+      </div>
+      <div class="activity-panel">
+        <div class="activity-panel-heading">
+          <span>Live activity</span>
+          <span class="muted-inline">The latest step appears here as it happens.</span>
+        </div>
+        <div class="activity-log" id="activityLog" role="log" aria-live="polite" aria-relevant="additions">
+          <div class="activity-entry info"><span class="activity-time">--:--:--</span><span>Ready. Choose the Excel log and reference cut.</span></div>
+        </div>
       </div>
       <div class="logger-status error hidden" id="errorDetails" aria-live="assertive"></div>
     </section>
