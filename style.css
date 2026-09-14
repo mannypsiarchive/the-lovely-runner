@@ -114,6 +114,9 @@ h1 {
   box-shadow: inset 0 1px rgba(255,255,255,.06);
 }
 
+.status-pill.error { color: #ffb4bf; border-color: rgba(255, 113, 130, .35); }
+.status-pill.complete { color: #8af0c4; border-color: rgba(104, 224, 174, .35); }
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -836,6 +839,9 @@ input:focus, select:focus {
   font-size: 13px;
   line-height: 1.45;
 }
+
+.metadata-status.success { color: #8af0c4; border-color: rgba(104, 224, 174, .35); }
+.compact-actions { margin-top: 14px; }
 
 .or-divider {
   display: flex;

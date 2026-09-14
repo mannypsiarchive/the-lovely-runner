@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">FAIR USE WORKFLOW TOOL</div>
-        <h1>Fair Use Log <span class="version-tag" data-app-version>1.1</span></h1>
+        <h1>Fair Use Log <span class="version-tag" data-app-version>2.0</span></h1>
         <p>Create midpoint screenshots locally and prepare a review workbook.</p>
       </div>
       <div class="hero-actions">
@@ -29,16 +29,24 @@
           <p>Enter Time Codes, Duration and Sources of All Fair Use Material in Program. Fair Use Log will Generate Screenshots and Due Diligence Logs of Material.</p>
         </div>
       </div>
+
       <div class="field">
         <label for="logFile">Choose a partially completed Fair Use Log</label>
         <input id="logFile" type="file" accept=".xlsx">
       </div>
+
       <div class="or-divider"><span>OR</span></div>
+
       <div class="field">
         <label for="driveSheetUrl">Choose a Fair Use Log from Google Drive</label>
         <input id="driveSheetUrl" type="url" placeholder="Paste the Google Sheet URL here" autocomplete="off">
       </div>
+      <div class="actions compact-actions">
+        <button class="button secondary" id="connectGoogleButton" type="button" disabled>Connect Google Sheet</button>
+      </div>
+      <div class="logger-status" id="googleStatus" aria-live="polite">Google connection is optional for Google Sheet input.</div>
       <div class="logger-status" id="selectedLogStatus" aria-live="polite">No Fair Use Log selected.</div>
+
       <div class="form-grid">
         <div class="field"><label for="showTitle">Show title</label><input id="showTitle" placeholder="Show title"></div>
         <div class="field"><label for="episodeTitle">Episode title</label><input id="episodeTitle" placeholder="Episode title"></div>
@@ -56,24 +64,43 @@
           <p>Video processing happens locally in this browser. The reference cut is never uploaded by this tool.</p>
         </div>
       </div>
-      <div class="field"><label for="referenceCut">Reference cut</label><input id="referenceCut" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v,.webm"></div>
-      <div class="metadata-status" id="videoMetadataStatus" aria-live="polite">Choose a reference cut. Start timecode and frame rate will be detected automatically.</div>
-      <div class="actions"><button class="button primary" id="createButton" type="button">Create Fair Use Log</button><button class="button secondary" id="cancelButton" type="button">Reset</button></div>
-      <div class="progress" aria-live="polite"><div class="progress-track"><div class="progress-bar" id="progressBar"></div></div><div class="progress-text" id="progressText">Ready</div></div>
+      <div class="field">
+        <label for="referenceCut">Reference cut</label>
+        <input id="referenceCut" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v,.webm">
+      </div>
+      <div class="metadata-status" id="videoMetadataStatus" aria-live="polite">Choose a reference cut. Start timecode and frame rate will be detected automatically when you create the log.</div>
+      <div class="actions">
+        <button class="button primary" id="createButton" type="button">Create Fair Use Log</button>
+        <button class="button secondary" id="cancelButton" type="button">Reset</button>
+      </div>
+      <div class="progress" aria-live="polite">
+        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-text" id="progressText">Ready</div>
+      </div>
+      <div class="logger-status error hidden" id="errorDetails" aria-live="assertive"></div>
     </section>
 
     <section class="card logger-card hidden" id="resultsCard">
-      <div class="logger-heading"><div><div class="eyebrow">REVIEW</div><h2 id="resultTitle">Screenshots ready</h2><p id="resultSummary"></p></div></div>
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">REVIEW</div>
+          <h2 id="resultTitle">Screenshots ready</h2>
+          <p id="resultSummary"></p>
+        </div>
+      </div>
       <div class="thumbnail-grid" id="thumbnailGrid"></div>
-      <div class="actions"><button class="button primary" id="downloadButton" type="button">Download Generated Excel</button><button class="button secondary" id="downloadImagesButton" type="button">Download Screenshots ZIP</button></div>
-      <div class="logger-status">Review the generated workbook in Excel and make any final screenshot adjustments there. Google Sheet export for the completed log can be added after the local workflow is verified.</div>
+      <div class="actions">
+        <button class="button primary" id="downloadButton" type="button">Download Generated Excel</button>
+        <button class="button secondary" id="downloadImagesButton" type="button">Download Screenshots ZIP</button>
+      </div>
+      <div class="logger-status">The Excel download contains the embedded screenshots. Google Sheet text/header updates use the same simple connection as the Archival Logging Helper.</div>
     </section>
   </main>
+
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
   <script src="fair-use-log.js"></script>
 </body>
 </html>
