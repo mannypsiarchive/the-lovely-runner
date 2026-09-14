@@ -1,14 +1,14 @@
 /*
-  Fair Use Log 3.3
+  Fair Use Log 3.4
 
   The browser keeps the Excel workbook and reference cut local. FFmpeg.wasm is used
   for the same metadata probe that the Python version uses; the browser's native
   video element then seeks the exact offset and Canvas captures the visible BITC.
-  The first workbook is a review copy. The final workbook is not built until the
-  user has reviewed it, closed Excel, and either entered or declined replacements.
+  The screenshots are reviewed in the browser. The final workbook is built only
+  after the user has reviewed the grid and chosen where to save it.
 */
 
-const FAIR_USE_LOG_VERSION = "3.3";
+const FAIR_USE_LOG_VERSION = "3.4";
 const FFMPEG_VERSION = "0.12.10";
 const FFMPEG_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd/ffmpeg.js`;
 const FFMPEG_CORE_BASE_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
@@ -38,7 +38,6 @@ const state = {
   video: null,
   videoUrl: null,
   outputBuffer: null,
-  reviewBuffer: null,
   finalBuffer: null,
   dueDiligenceZip: null,
   images: [],
@@ -829,32 +828,107 @@ function addScreenshotToExcel(workbook, sheet, rowNumber, bytes) {
   sheet.getColumn(1).width = 46;
 }
 
-function appendThumbnailCard(item, bytes) {
-  const card = document.createElement("figure");
-  card.className = "thumbnail-card";
-  const image = document.createElement("img");
-  const url = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
-  state.previewUrls.push(url);
-  image.src = url;
-  image.alt = `Row ${item.row} screenshot at ${item.midpoint}`;
-  const caption = document.createElement("figcaption");
-  caption.textContent = `Row ${item.row} · ${item.midpoint}`;
-  card.append(image, caption);
-  $("thumbnailGrid").append(card);
-}
-
 function clearPreviewUrls() {
   state.previewUrls.forEach((url) => URL.revokeObjectURL(url));
   state.previewUrls = [];
 }
 
-function refreshThumbnailGrid() {
+function renderReviewGrid() {
+  const grid = $("reviewGrid");
+  if (!grid) return;
   clearPreviewUrls();
-  $("thumbnailGrid").innerHTML = "";
+  grid.innerHTML = "";
   state.images.forEach((image) => {
     const item = state.midpoints.find((candidate) => candidate.row === image.row) || image;
-    appendThumbnailCard({ ...item, midpoint: image.midpoint }, image.bytes);
+    const row = document.createElement("tr");
+    row.className = "review-grid-row";
+    row.dataset.row = String(image.row);
+
+    const reviewCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "review-change-toggle";
+    checkbox.setAttribute("aria-label", "Mark row " + image.row + " for screenshot replacement");
+    reviewCell.appendChild(checkbox);
+
+    const rowCell = document.createElement("td");
+    rowCell.textContent = String(image.row);
+    rowCell.className = "review-grid-row-number";
+
+    const fileCell = document.createElement("td");
+    fileCell.textContent = item.fileName || "(no file name)";
+
+    const imageCell = document.createElement("td");
+    const preview = document.createElement("img");
+    const url = URL.createObjectURL(new Blob([image.bytes], { type: "image/jpeg" }));
+    state.previewUrls.push(url);
+    preview.src = url;
+    preview.alt = "Row " + image.row + " screenshot at " + image.midpoint;
+    imageCell.appendChild(preview);
+
+    const midpointCell = document.createElement("td");
+    midpointCell.textContent = image.midpoint;
+    midpointCell.className = "timecode-cell";
+
+    const inCell = document.createElement("td");
+    inCell.textContent = item.tcIn;
+    inCell.className = "timecode-cell";
+
+    const outCell = document.createElement("td");
+    outCell.textContent = item.tcOut;
+    outCell.className = "timecode-cell";
+
+    const sourceCell = document.createElement("td");
+    sourceCell.textContent = item.source || "(no Source)";
+
+    const replacementCell = document.createElement("td");
+    const replacement = document.createElement("input");
+    replacement.type = "text";
+    replacement.className = "review-replacement-tc";
+    replacement.placeholder = "Only if replacing";
+    replacement.disabled = true;
+    replacement.setAttribute("aria-label", "Replacement midpoint TC for row " + image.row);
+    replacementCell.appendChild(replacement);
+
+    checkbox.addEventListener("change", () => {
+      replacement.disabled = !checkbox.checked;
+      if (checkbox.checked) replacement.focus();
+      updateReviewStatus();
+    });
+    replacement.addEventListener("input", updateReviewStatus);
+    row.append(reviewCell, rowCell, fileCell, imageCell, midpointCell, inCell, outCell, sourceCell, replacementCell);
+    grid.appendChild(row);
   });
+  updateReviewStatus();
+}
+
+function updateReviewStatus() {
+  const status = $("reviewStatus");
+  const grid = $("reviewGrid");
+  if (!status || !grid) return;
+  const selected = grid.querySelectorAll(".review-change-toggle:checked").length;
+  status.textContent = selected
+    ? selected + " screenshot replacement" + (selected === 1 ? "" : "s") + " selected. Enter a replacement midpoint TC in each selected row."
+    : "Review the grid. Select Replace only for screenshots that need a different midpoint.";
+}
+
+function collectReviewChanges() {
+  const changes = [];
+  $("reviewGrid").querySelectorAll(".review-grid-row").forEach((row) => {
+    const checkbox = row.querySelector(".review-change-toggle");
+    if (!checkbox.checked) return;
+    const rowNumber = Number(row.dataset.row);
+    const midpoint = normalizeTimecode(row.querySelector(".review-replacement-tc").value);
+    if (!isTimecode(midpoint)) {
+      throw new Error("Row " + rowNumber + " is marked for replacement but does not have a complete midpoint timecode.");
+    }
+    changes.push({
+      row: rowNumber,
+      midpoint,
+      midpointFrames: parseTimecode(midpoint, state.videoMetadata.fps),
+    });
+  });
+  return changes;
 }
 
 async function buildWorkbookBuffer() {
@@ -867,49 +941,6 @@ async function buildWorkbookBuffer() {
   state.workbook = workbook;
   state.worksheet = worksheet;
   return workbook.xlsx.writeBuffer();
-}
-
-function renderReviewChanges() {
-  const list = $("reviewChangeList");
-  const status = $("reviewStatus");
-  list.innerHTML = "";
-  if (!state.reviewChanges.length) {
-    status.textContent = "No replacement rows entered. If the review workbook looks correct, continue without changes.";
-    return;
-  }
-  status.textContent = state.reviewChanges.length + " replacement row" + (state.reviewChanges.length === 1 ? "" : "s") + " queued.";
-  state.reviewChanges.forEach((change) => {
-    const item = document.createElement("div");
-    item.className = "review-change-item";
-    const text = document.createElement("span");
-    text.textContent = "Row " + change.row + " → " + change.midpoint;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "button danger";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", () => {
-      state.reviewChanges = state.reviewChanges.filter((candidate) => candidate.row !== change.row);
-      renderReviewChanges();
-    });
-    item.append(text, remove);
-    list.appendChild(item);
-  });
-}
-
-function addReviewChange() {
-  const row = Number.parseInt($("reviewRow").value.trim(), 10);
-  const midpoint = normalizeTimecode($("reviewTc").value);
-  if (!Number.isInteger(row) || row < DATA_START_ROW) throw new Error("Enter a valid worksheet row number.");
-  if (!state.midpoints.some((item) => item.row === row)) throw new Error("Row " + row + " was not one of the rows processed.");
-  if (!isTimecode(midpoint)) throw new Error("Enter the replacement as a complete timecode, for example 01:33:00:00.");
-  const midpointFrames = parseTimecode(midpoint, state.videoMetadata.fps);
-  state.reviewChanges = state.reviewChanges.filter((change) => change.row !== row);
-  state.reviewChanges.push({ row, midpoint, midpointFrames });
-  state.reviewChanges.sort((a, b) => a.row - b.row);
-  $("reviewRow").value = "";
-  $("reviewTc").value = "";
-  renderReviewChanges();
-  logActivity("Queued replacement screenshot for row " + row + " at " + midpoint + ".", "success");
 }
 
 function safeFilename(value) {
@@ -989,15 +1020,34 @@ async function prepareDueDiligence() {
   logActivity("Due Diligence preparation finished. " + formCount + " Word form" + (formCount === 1 ? "" : "s") + " are ready.", "success");
 }
 
-async function applyReviewChanges() {
-  const button = $("applyReviewButton");
-  if (!$("reviewWorkbookClosed").checked) throw new Error("Close the review workbook in Excel, then confirm that it is closed.");
-  button.disabled = true;
+async function saveFinalWorkbook() {
+  clearError();
+  state.reviewChanges = collectReviewChanges();
+  let fileHandle = null;
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: "FAIR_USE_FINAL.xlsx",
+        types: [{
+          description: "Excel workbook",
+          accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] },
+        }],
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        await activity("Final workbook save canceled.", "warning");
+        return;
+      }
+      throw error;
+    }
+  }
+
+  const button = $("saveFinalButton");
   const originalLabel = button.textContent;
-  button.textContent = "Applying…";
+  button.disabled = true;
+  button.textContent = "Saving…";
   try {
-    clearError();
-    await activity("Review workbook closed. Applying the requested row changes.");
+    await activity("Review grid checked. " + state.reviewChanges.length + " screenshot replacement" + (state.reviewChanges.length === 1 ? "" : "s") + " selected.");
     const startFrames = parseTimecode(state.videoMetadata.startTimecode, state.videoMetadata.fps);
     for (let index = 0; index < state.reviewChanges.length; index += 1) {
       const change = state.reviewChanges[index];
@@ -1017,16 +1067,26 @@ async function applyReviewChanges() {
       rowItem.midpointFrames = change.midpointFrames;
       await activity("Row " + change.row + ": replacement screenshot captured.", "success");
     }
-    refreshThumbnailGrid();
-    await activity("Saving the final Excel workbook after review.");
+
+    await activity("Saving the final Excel workbook.");
     state.finalBuffer = await buildWorkbookBuffer();
     state.outputBuffer = state.finalBuffer;
-    await activity("Final workbook saved. Screenshots are embedded in column A.", "success");
-    $("reviewCard").classList.add("hidden");
-    $("resultTitle").textContent = "Final Fair Use Log ready";
-    $("resultSummary").textContent = state.images.length + " screenshot" + (state.images.length === 1 ? "" : "s") + " embedded in column A. The review stage is complete.";
-    $("resultsCard").classList.remove("hidden");
-    setStatus("Final workbook ready", "complete", 100);
+    const workbookBlob = new Blob([state.finalBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    if (fileHandle) {
+      const writable = await fileHandle.createWritable();
+      await writable.write(workbookBlob);
+      await writable.close();
+      await activity("Final workbook saved to " + (fileHandle.name || "the selected location") + ".", "success");
+    } else {
+      downloadBlob(workbookBlob, "FAIR_USE_FINAL.xlsx");
+      await activity("Final workbook downloaded as FAIR_USE_FINAL.xlsx.", "success");
+    }
+    renderReviewGrid();
+    $("resultTitle").textContent = "Final Fair Use Log saved";
+    $("resultSummary").textContent = state.images.length + " screenshot" + (state.images.length === 1 ? "" : "s") + " embedded in column A. The review is complete.";
+    $("reviewStatus").textContent = "Final workbook saved. Due Diligence preparation is ready.";
+    $("dueDiligenceBox").classList.remove("hidden");
+    setStatus("Final workbook saved", "complete", 100);
   } finally {
     button.disabled = false;
     button.textContent = originalLabel;
@@ -1072,14 +1132,10 @@ async function createLog() {
   const durationSeconds = video.duration;
   state.images = [];
   state.outputBuffer = null;
-  state.reviewBuffer = null;
   state.finalBuffer = null;
   state.reviewChanges = [];
-  $("reviewWorkbookClosed").checked = false;
-  $("applyReviewButton").disabled = true;
   $("resultsCard").classList.add("hidden");
-  $("reviewCard").classList.add("hidden");
-  $("thumbnailGrid").innerHTML = "";
+  $("dueDiligenceBox").classList.add("hidden");
 
   updateHeaderRows(state.worksheet);
   for (let index = 0; index < state.midpoints.length; index += 1) {
@@ -1098,16 +1154,13 @@ async function createLog() {
     await activity(`Row ${item.row}: frame captured. Embedding screenshot in column A.`, "success");
     addScreenshotToExcel(state.workbook, state.worksheet, item.row, bytes);
     state.images.push({ row: item.row, midpoint: item.midpoint, bytes });
-    appendThumbnailCard(item, bytes);
   }
 
- await activity("All screenshots are embedded in column A. Building the review workbook.");
- state.reviewBuffer = await state.workbook.xlsx.writeBuffer();
- await activity("Review workbook saved. Download it, open it, and review the screenshots before continuing.", "success");
- $("reviewStatus").textContent = "Review workbook is ready. Download and open it, note rows that need changes, close Excel, then continue below.";
- renderReviewChanges();
- $("reviewCard").classList.remove("hidden");
- setStatus("Review workbook ready", "complete", 100);
+  await activity("All screenshots are embedded in column A. Showing the in-browser review grid.", "success");
+  renderReviewGrid();
+  $("reviewStatus").textContent = "Screenshots are ready for review. Select Replace only where a different midpoint is needed.";
+  $("resultsCard").classList.remove("hidden");
+  setStatus("Review screenshots", "working", 100);
 }
 
 async function downloadImages() {
@@ -1130,13 +1183,11 @@ async function handleLogFileChange() {
   state.sourceWorkbookBuffer = null;
   state.images = [];
   state.reviewChanges = [];
-  state.reviewBuffer = null;
   state.finalBuffer = null;
+  state.dueDiligenceZip = null;
   state.outputBuffer = null;
-  $("reviewWorkbookClosed").checked = false;
-  $("applyReviewButton").disabled = true;
-  $("reviewCard").classList.add("hidden");
   $("resultsCard").classList.add("hidden");
+  $("dueDiligenceBox").classList.add("hidden");
   $("midpointPreview").classList.add("hidden");
   if (!file) {
     $("selectedLogStatus").textContent = "No Fair Use Log selected.";
@@ -1200,43 +1251,18 @@ $("createButton").addEventListener("click", async () => {
     button.textContent = originalLabel;
   }
 });
-$("downloadButton").addEventListener("click", () => {
-  if (!state.outputBuffer) return;
-  logActivity("Downloading the generated Excel file.", "success");
-  downloadBlob(
-    new Blob([state.outputBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-    "FAIR_USE_GENERATED.xlsx"
-  );
+$("saveFinalButton").addEventListener("click", async () => {
+  const button = $("saveFinalButton");
+  if (button.disabled) return;
+  try {
+    await saveFinalWorkbook();
+  } catch (error) {
+    showError(error);
+  }
 });
 $("downloadImagesButton").addEventListener("click", () => {
   logActivity("Preparing the screenshots ZIP.");
   void downloadImages();
-});
-$("downloadReviewButton").addEventListener("click", () => {
-  if (!state.reviewBuffer) return;
-  logActivity("Downloading the review workbook.", "success");
-  downloadBlob(
-    new Blob([state.reviewBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-    "FAIR_USE_REVIEW.xlsx"
-  );
-});
-$("addReviewChangeButton").addEventListener("click", () => {
-  try {
-    clearError();
-    addReviewChange();
-  } catch (error) {
-    showError(error);
-  }
-});
-$("reviewWorkbookClosed").addEventListener("change", () => {
-  $("applyReviewButton").disabled = !$("reviewWorkbookClosed").checked;
-});
-$("applyReviewButton").addEventListener("click", async () => {
-  try {
-    await applyReviewChanges();
-  } catch (error) {
-    showError(error);
-  }
 });
 $("prepareDueDiligenceButton").addEventListener("click", async () => {
   const button = $("prepareDueDiligenceButton");
