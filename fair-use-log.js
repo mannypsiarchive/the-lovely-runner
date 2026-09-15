@@ -1,5 +1,5 @@
 /*
-  Fair Use Log 3.4
+  Fair Use Log 3.5
 
   The browser keeps the Excel workbook and reference cut local. FFmpeg.wasm is used
   for the same metadata probe that the Python version uses; the browser's native
@@ -8,7 +8,7 @@
   after the user has reviewed the grid and chosen where to save it.
 */
 
-const FAIR_USE_LOG_VERSION = "3.4";
+const FAIR_USE_LOG_VERSION = "3.5";
 const FFMPEG_VERSION = "0.12.10";
 const FFMPEG_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${FFMPEG_VERSION}/dist/umd/ffmpeg.js`;
 const FFMPEG_CORE_BASE_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
@@ -948,6 +948,13 @@ function safeFilename(value) {
   return (cleaned || "Unknown Source").slice(0, 100);
 }
 
+function dueDiligenceSourceName(value) {
+  return cellText(value)
+    .replace(/^fair\s+use\s*[-:]\s*/i, "")
+    .replace(/\s*[-:]\s*(?:dd|due diligence)\s+(?:form|outreach form)\s*$/i, "")
+    .trim() || "Unknown Source";
+}
+
 function docxLibrary() {
   return window.docx || window.Docx || null;
 }
@@ -962,8 +969,9 @@ async function prepareDueDiligence() {
     if (!row.source) return;
     const image = state.images.find((candidate) => candidate.row === row.row);
     if (!image) return;
-    if (!groups.has(row.source)) groups.set(row.source, []);
-    groups.get(row.source).push({ row, image });
+    const sourceName = dueDiligenceSourceName(row.source);
+    if (!groups.has(sourceName)) groups.set(sourceName, []);
+    groups.get(sourceName).push({ row, image });
   });
   if (!groups.size) throw new Error("No screenshots have a Source value in column G, so no Due Diligence logs can be prepared.");
 
@@ -975,42 +983,44 @@ async function prepareDueDiligence() {
   let formCount = 0;
   for (const [source, items] of groups.entries()) {
     const children = [];
-    const centered = (text, size = 28) => new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: String(text || ""), bold: true, size })],
+    const leftLine = (text, { bold = false, size = 20, after = 0 } = {}) => new Paragraph({
+      alignment: AlignmentType.LEFT,
+      spacing: { after },
+      children: [new TextRun({ text: String(text || ""), bold, size })],
     });
-    const body = (text, bold = false) => new Paragraph({
-      children: [new TextRun({ text: String(text || ""), bold })],
+    const blankLine = (after = 0) => new Paragraph({
+      spacing: { after },
+      children: [new TextRun({ text: "", size: 18 })],
     });
-    children.push(centered(source + " DUE DILIGENCE OUTREACH FORM"));
-    children.push(body(""));
-    children.push(centered("SERIES TITLE: " + ($("showTitle").value.trim() || "SHOW TITLE")));
-    children.push(centered("EPISODE TITLE: " + ($("episodeTitle").value.trim() || "EPISODE")));
-    children.push(centered("COMPANY INFO: " + $("companyLlc").value.trim()));
-    children.push(body(""));
-    children.push(centered("MATERIAL TO FAIR USE:"));
+    const sectionHeading = (text) => leftLine(text, { bold: true, size: 22, after: 80 });
+    const body = (text, bold = false) => leftLine(text, { bold, size: 18, after: 20 });
+
+    children.push(leftLine(source + " Due Diligence Form", { bold: true, size: 24, after: 100 }));
+    children.push(leftLine("SERIES TITLE: " + ($("showTitle").value.trim() || "SHOW TITLE"), { size: 20 }));
+    children.push(leftLine("EPISODE TITLE: " + ($("episodeTitle").value.trim() || "EPISODE"), { size: 20 }));
+    children.push(leftLine("COMPANY INFO: " + $("companyLlc").value.trim(), { size: 20, after: 120 }));
+    children.push(sectionHeading("MATERIAL TO FAIR USE:"));
     for (const item of items) {
       children.push(new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 0 },
         children: [new ImageRun({
           data: item.image.bytes,
           type: "jpg",
-          transformation: { width: 556, height: 313 },
+          transformation: { width: 260, height: 146 },
         })],
       }));
       children.push(body("Time Codes Used: " + item.row.tcIn + " - " + item.row.tcOut, true));
-      children.push(body(""));
+      children.push(blankLine(40));
     }
-    children.push(centered("DESCRIPTION:"));
-    items.forEach((item) => {
-      children.push(body(item.row.tcIn + " - " + item.row.tcOut + ": " + (item.row.description || "")));
-    });
-    children.push(body(""));
-    children.push(centered("DUE DILIGENCE:"));
-    for (let blank = 0; blank < 6; blank += 1) children.push(body(""));
+    children.push(sectionHeading("DESCRIPTION:"));
+    for (let blank = 0; blank < 4; blank += 1) children.push(blankLine(40));
+    children.push(sectionHeading("DUE DILIGENCE:"));
+    for (let blank = 0; blank < 6; blank += 1) children.push(blankLine(40));
 
     const document = new Document({ sections: [{ children }] });
     const blob = await Packer.toBlob(document);
-    zip.file(safeFilename(source) + " - DD Form.docx", await blob.arrayBuffer());
+    zip.file(safeFilename(source + " Due Diligence Form") + ".docx", await blob.arrayBuffer());
     formCount += 1;
     await activity("Prepared Due Diligence form for " + source + ".", "success");
   }
