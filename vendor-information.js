@@ -76,7 +76,6 @@ async function loadVendorGrid() {
     $("refreshButton").disabled = false;
     $("connectButton").textContent = "Reconnect";
     setStatus("Connected · " + state.rows.length + " vendors loaded", "connected");
-    populateVendorOptions();
     renderResults("", false);
   } catch (error) { setStatus("Could not read the vendor grid: " + (error.result?.error?.message || error.message), "error"); }
 }
@@ -89,10 +88,6 @@ function findColumn(names) {
 function valueFor(names) {
   const index = findColumn(names);
   return index < 0 ? "" : String(state.selected?.cells[index] || "").trim();
-}
-
-function populateVendorOptions() {
-  $("vendorOptions").innerHTML = state.rows.map((row) => `<option value="${escapeHtml(row.cells[state.vendorColumn])}"></option>`).join("");
 }
 
 function renderResults(query, open = true) {
@@ -117,7 +112,10 @@ function showVendor(rowNumber) {
   ];
   $("vendorSearch").value = valueFor(["Vendor", "Vendor Name", "Source"]);
   renderResults($("vendorSearch").value, false);
-  $("vendorDetail").innerHTML = `<div class="vendor-detail-heading"><div class="eyebrow">VENDOR PROFILE</div><h2>${escapeHtml(valueFor(["Vendor", "Vendor Name", "Source"]))}</h2><span>Live row ${rowNumber}</span></div>${renderSection("Agreement & Approval", boldFields, true)}${renderSection("Licensing, Contact & Rates", detailFields, false)}`;
+  const vendorStatus = valueFor(["Vendor Status"]);
+  const preferredVendor = vendorStatus.toLowerCase() === "a+e global media preferred vendor";
+  const preferredBadge = preferredVendor ? '<div class="preferred-vendor-badge"><span class="preferred-vendor-icon">✦</span><span><strong>A+E Global Media Preferred Vendor</strong><small>Legal review not required</small></span></div>' : "";
+  $("vendorDetail").innerHTML = `<div class="vendor-detail-heading"><div class="eyebrow">VENDOR PROFILE</div><h2>${escapeHtml(valueFor(["Vendor", "Vendor Name", "Source"]))}</h2>${preferredBadge}<span>Live row ${rowNumber}</span></div>${renderSection("Agreement & Approval", boldFields, true)}${renderSection("Licensing, Contact & Rates", detailFields, false)}`;
   $("vendorDetail").classList.remove("hidden");
 }
 
