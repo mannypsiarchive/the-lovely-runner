@@ -6,7 +6,7 @@ const VENDOR_SPREADSHEET_ID = "1lL1WO9Py1V_lHa9SSy5gh9EanP6zOQuiu6RvWsVd5Mk";
 const VENDOR_TAB = "VENDOR - ALL INFORMATION";
 
 const $ = (id) => document.getElementById(id);
-const state = { tokenClient: null, gapiReady: false, gisReady: false, rows: [], headers: [], vendorColumn: -1 };
+const state = { tokenClient: null, gapiReady: false, gisReady: false, rows: [], headers: [], vendorColumn: -1, autoAuthAttempted: false };
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[char]));
@@ -18,7 +18,6 @@ function normalizeHeader(value) {
 
 function setStatus(message, kind = "") {
   $("vendorStatus").textContent = message;
-  $("connectionDot").className = ("connection-dot " + kind).trim();
 }
 
 function sheetRange() {
@@ -40,15 +39,26 @@ function initializeGoogle() {
   maybeEnableConnection();
 }
 
-function maybeEnableConnection() { $("connectButton").disabled = !(state.gapiReady && state.gisReady); }
+function maybeEnableConnection() {
+  const ready = state.gapiReady && state.gisReady;
+  $("connectButton").disabled = !ready;
+  if (ready && !state.autoAuthAttempted) {
+    state.autoAuthAttempted = true;
+    requestGoogleAccess(true);
+  }
+}
 
-function requestGoogleAccess() {
+function requestGoogleAccess(silent = false) {
   state.tokenClient.callback = async (response) => {
-    if (response.error) { setStatus("Google authorization failed: " + response.error, "error"); return; }
+    if (response.error) {
+      setStatus("Authorization needed to load the vendor grid.", "error");
+      $("searchMeta").textContent = "Use Reconnect if Google asks for permission.";
+      return;
+    }
     gapi.client.setToken({ access_token: response.access_token });
     await loadVendorGrid();
   };
-  state.tokenClient.requestAccessToken({ prompt: gapi.client.getToken() ? "" : "consent" });
+  state.tokenClient.requestAccessToken({ prompt: silent ? "" : (gapi.client.getToken() ? "" : "consent") });
 }
 
 async function loadVendorGrid() {
@@ -64,9 +74,10 @@ async function loadVendorGrid() {
     $("searchPanel").classList.remove("hidden");
     $("vendorSearch").disabled = false;
     $("refreshButton").disabled = false;
-    $("connectButton").textContent = "Reconnect Vendor Grid";
+    $("connectButton").textContent = "Reconnect";
     setStatus("Connected · " + state.rows.length + " vendors loaded", "connected");
-    renderResults("");
+    populateVendorOptions();
+    renderResults("", false);
   } catch (error) { setStatus("Could not read the vendor grid: " + (error.result?.error?.message || error.message), "error"); }
 }
 
@@ -80,11 +91,17 @@ function valueFor(names) {
   return index < 0 ? "" : String(state.selected?.cells[index] || "").trim();
 }
 
-function renderResults(query) {
+function populateVendorOptions() {
+  $("vendorOptions").innerHTML = state.rows.map((row) => `<option value="${escapeHtml(row.cells[state.vendorColumn])}"></option>`).join("");
+}
+
+function renderResults(query, open = true) {
   const normalized = normalizeHeader(query);
   const matches = state.rows.filter((row) => !normalized || normalizeHeader(row.cells[state.vendorColumn]).includes(normalized)).slice(0, 50);
   $("searchMeta").textContent = normalized ? `${matches.length}${matches.length === 50 ? "+" : ""} matching vendors` : `${state.rows.length} vendors available`;
-  $("vendorResults").innerHTML = matches.length ? matches.map((row) => `<button class="vendor-result" type="button" data-row="${row.rowNumber}">${escapeHtml(row.cells[state.vendorColumn])}</button>`).join("") : '<div class="vendor-empty">No matching vendors found.</div>';
+  $("vendorSearch").setAttribute("aria-expanded", String(open && matches.length > 0));
+  $("vendorResults").classList.toggle("is-open", open && matches.length > 0);
+  $("vendorResults").innerHTML = matches.length ? matches.map((row) => `<button class="vendor-result" type="button" role="option" data-row="${row.rowNumber}">${escapeHtml(row.cells[state.vendorColumn])}</button>`).join("") : '';
   $("vendorResults").querySelectorAll("[data-row]").forEach((button) => button.addEventListener("click", () => showVendor(Number(button.dataset.row))));
 }
 
@@ -98,12 +115,14 @@ function showVendor(rowNumber) {
   const detailFields = [
     ["Legal Flag Information (Licensing Status)", ["Legal Flag Information (Licensing Status)", "Licensing Status", "Legal Flag Information"]], ["License Rights", ["License Rights"]], ["License Restrictions", ["License Restrictions"]], ["License Usage", ["License Usage"]], ["Standard Credit", ["Standard Credit"]], ["Rep Name", ["Rep Name"]], ["Rep Email", ["Rep Email"]], ["Contact Phone", ["Contact Phone"]], ["Footage Archival Rate", ["Footage Archival Rate"]], ["Still Archival Rate", ["Still Archival Rate"]]
   ];
-  $("vendorDetail").innerHTML = `<div class="vendor-detail-heading"><div class="eyebrow">VENDOR PROFILE</div><h2>${escapeHtml(valueFor(["Vendor", "Vendor Name", "Source"]))}</h2><span>Live row ${rowNumber} from ${escapeHtml(VENDOR_TAB)}</span></div>${renderSection("Agreement & Approval", boldFields, true)}${renderSection("Licensing, Contact & Rates", detailFields, false)}`;
+  $("vendorSearch").value = valueFor(["Vendor", "Vendor Name", "Source"]);
+  renderResults($("vendorSearch").value, false);
+  $("vendorDetail").innerHTML = `<div class="vendor-detail-heading"><div class="eyebrow">VENDOR PROFILE</div><h2>${escapeHtml(valueFor(["Vendor", "Vendor Name", "Source"]))}</h2><span>Live row ${rowNumber}</span></div>${renderSection("Agreement & Approval", boldFields, true)}${renderSection("Licensing, Contact & Rates", detailFields, false)}`;
   $("vendorDetail").classList.remove("hidden");
 }
 
 function renderSection(title, fields, prominent) {
-  return `<section class="vendor-section ${prominent ? "prominent" : ""}"><h3>${title}</h3><div class="vendor-field-grid">${fields.map(([label, names]) => `<div class="vendor-field"><span>${label}</span><strong>${formatValue(valueFor(names), label)}</strong></div>`).join("")}</div></section>`;
+  return `<section class="vendor-section ${prominent ? "prominent" : ""}"><h3>${title}</h3><div class="vendor-field-grid">${fields.map(([label, names]) => `<div class="vendor-field"><span class="vendor-field-label">${label}</span><span class="vendor-field-colon">:</span><strong class="vendor-field-value">${formatValue(valueFor(names), label)}</strong></div>`).join("")}</div></section>`;
 }
 
 function formatValue(value, label) {
@@ -114,5 +133,9 @@ function formatValue(value, label) {
 
 $("connectButton").addEventListener("click", requestGoogleAccess);
 $("refreshButton").addEventListener("click", loadVendorGrid);
-$("vendorSearch").addEventListener("input", (event) => renderResults(event.target.value));
+$("vendorSearch").addEventListener("input", (event) => renderResults(event.target.value, true));
+$("vendorSearch").addEventListener("focus", (event) => renderResults(event.target.value, true));
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".vendor-search-box")) renderResults($("vendorSearch").value, false);
+});
 initializeGoogle();

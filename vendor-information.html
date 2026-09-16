@@ -18,26 +18,23 @@
     </header>
 
     <section class="card vendor-card">
-      <div class="logger-heading">
-        <div>
-          <div class="eyebrow">VENDOR GRID</div>
-          <h2>Find a vendor</h2>
-          <p>Connect to the vendor grid, then search by vendor name.</p>
+      <div class="vendor-search-stage" id="searchPanel">
+        <div class="eyebrow">VENDOR GRID</div>
+        <h2>Search for a Vendor</h2>
+        <div class="vendor-search-box">
+          <label class="sr-only" for="vendorSearch">Search for a Vendor</label>
+          <input id="vendorSearch" type="search" placeholder="Start typing a vendor name…" autocomplete="off" list="vendorOptions" disabled aria-controls="vendorResults" aria-expanded="false">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <datalist id="vendorOptions"></datalist>
+          <div class="vendor-results" id="vendorResults" role="listbox" aria-label="Vendor search results"></div>
         </div>
-        <div class="connection-dot" id="connectionDot"></div>
+        <div class="vendor-search-meta" id="searchMeta">Connecting to the live vendor grid…</div>
       </div>
 
-      <div class="vendor-actions">
-        <button class="button primary" id="connectButton" disabled>Connect Vendor Grid</button>
+      <div class="vendor-utility">
+        <span id="vendorStatus" aria-live="polite">Loading Google connection…</span>
         <button class="button secondary" id="refreshButton" disabled>Refresh Data</button>
-      </div>
-      <div class="logger-status" id="vendorStatus" aria-live="polite">Loading Google connection…</div>
-
-      <div class="vendor-search hidden" id="searchPanel">
-        <label for="vendorSearch">Search vendors</label>
-        <input id="vendorSearch" type="search" placeholder="Type a vendor name…" autocomplete="off" disabled>
-        <div class="vendor-search-meta" id="searchMeta"></div>
-        <div class="vendor-results" id="vendorResults" role="listbox" aria-label="Vendor search results"></div>
+        <button class="button ghost" id="connectButton" disabled>Reconnect</button>
       </div>
 
       <div class="vendor-detail hidden" id="vendorDetail" aria-live="polite"></div>
