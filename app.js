@@ -171,7 +171,7 @@ const DELETE_PATTERNS = [
   /BACKPLATE/i,
   /BACKPLATES/i,
   /GREY[ _-]+BG/i,
-  /(^|[^A-Z0-9])BUG([^A-Z0-9]|$)/i,
+  /BUG/i,
   /FLICKER[ _-]+LIGHT/i,
   /FAST[ _-]+LIGHT/i,
   /TEST[ _-]+BAR/i,

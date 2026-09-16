@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archival Vendor Information · The Lovely Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
+        <h1>Archival Vendor Information <span class="version-tag">1.0</span></h1>
+        <p>Search the live Factual Studios vendor grid.</p>
+      </div>
+      <a class="button ghost back-home" href="index.html">← All tools</a>
+    </header>
+
+    <section class="card vendor-card">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">VENDOR GRID</div>
+          <h2>Find a vendor</h2>
+          <p>Connect to the vendor grid, then search by vendor name.</p>
+        </div>
+        <div class="connection-dot" id="connectionDot"></div>
+      </div>
+
+      <div class="vendor-actions">
+        <button class="button primary" id="connectButton" disabled>Connect Vendor Grid</button>
+        <button class="button secondary" id="refreshButton" disabled>Refresh Data</button>
+      </div>
+      <div class="logger-status" id="vendorStatus" aria-live="polite">Loading Google connection…</div>
+
+      <div class="vendor-search hidden" id="searchPanel">
+        <label for="vendorSearch">Search vendors</label>
+        <input id="vendorSearch" type="search" placeholder="Type a vendor name…" autocomplete="off" disabled>
+        <div class="vendor-search-meta" id="searchMeta"></div>
+        <div class="vendor-results" id="vendorResults" role="listbox" aria-label="Vendor search results"></div>
+      </div>
+
+      <div class="vendor-detail hidden" id="vendorDetail" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client"></script>
+  <script src="vendor-information.js"></script>
+</body>
+</html>
