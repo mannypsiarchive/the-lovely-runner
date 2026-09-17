@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.21";
+const LOGGER_BUILD = "1.22";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -198,9 +198,13 @@ async function collectSourceFiles(directoryHandle) {
 
 function sourceFileName(fileName) {
   const stem = String(fileName).replace(/\.[^.]+$/, "");
-  const gettyMatch = stem.match(/^gettyimages-(.+?)-(?:\d+x\d+|\d+)(?:_adpp)?$/i);
-  if (gettyMatch) return gettyMatch[1];
-  if (/^gettyimages-/i.test(stem)) return stem.replace(/^gettyimages-/i, "");
+  if (/^gettyimages-/i.test(stem)) {
+    let id = stem.replace(/^gettyimages-/i, "");
+    // Remove only unambiguous delivery suffixes. This preserves legitimate
+    // hyphenated IDs such as 670-70, 717-40, and 717-43.
+    id = id.replace(/-(?:\d+x\d+|\d+_adpp)$/i, "");
+    return id;
+  }
   const alamyVideoMatch = stem.match(/^(?!shutterstock(?:_|$))([A-Z0-9]{5,12})_\d+$/i);
   if (alamyVideoMatch) return alamyVideoMatch[1];
   const shutterstockMatch = stem.match(/^shutterstock(?:_editorial)?_(\d+[a-z]*)(?:-.+)?$/i);
@@ -373,7 +377,16 @@ function sourceUrl(sourceLink) {
   // Capture the URL cleanly from plain text, Markdown links, or a
   // HYPERLINK-style cell value without including brackets or punctuation.
   const match = raw.match(/https?:\/\/[^\s\]\)"']+/i);
-  return match ? match[0] : "";
+  if (!match) return "";
+  const candidate = match[0].replace(/[\\]+$/, "");
+  try {
+    const wrapper = new URL(candidate);
+    const wrappedUrl = wrapper.searchParams.get("url");
+    if (wrappedUrl) return wrappedUrl;
+  } catch (error) {
+    // Keep ordinary links unchanged.
+  }
+  return candidate;
 }
 
 function assetIdFromSourceLink(sourceLink) {
