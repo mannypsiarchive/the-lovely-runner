@@ -73,12 +73,62 @@ function parseEventLine(line) {
   };
 }
 
-function cleanComment(commentLines) {
+function removeAvidNewSuffixes(value) {
+  // Avid may append .NEW.01, .NEW.02, etc. when clips are copied,
+  // duplicated, or turned into subclips. These tokens are not part of the
+  // actual source filename, so remove every occurrence before matching,
+  // classification, review, or Excel export.
+  return String(value ?? "")
+    .replace(/\.NEW\.\d+/gi, "")
+    .trim();
+}
+
+function normalizeClipNameForMatch(value) {
+  return removeAvidNewSuffixes(
+    String(value ?? "")
+      .replace(/^\*\s*(?:FROM|TO)\s+CLIP\s+NAME\s*:?\s*/i, "")
+  )
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function cleanComment(commentLines, eventReel = "") {
   if (!commentLines.length) return "";
+
+  let fromClipName = "";
+  let toClipName = "";
+
   for (const line of commentLines) {
-    const m = line.match(/^\*\s*FROM\s+CLIP\s+NAME\s*:?\s*(.*)$/i);
-    if (m) return m[1].trim();
+    const fromMatch = line.match(/^\*\s*FROM\s+CLIP\s+NAME\s*:?\s*(.*)$/i);
+    if (fromMatch) fromClipName = removeAvidNewSuffixes(fromMatch[1]);
+
+    const toMatch = line.match(/^\*\s*TO\s+CLIP\s+NAME\s*:?\s*(.*)$/i);
+    if (toMatch) toClipName = removeAvidNewSuffixes(toMatch[1]);
   }
+
+  // Avid writes FROM/TO clip-name pairs around dissolves and other transitions.
+  // Match the current event's Reel to the correct side of the transition.
+  if (fromClipName && toClipName) {
+    const reelKey = normalizeClipNameForMatch(eventReel);
+    const fromKey = normalizeClipNameForMatch(fromClipName);
+    const toKey = normalizeClipNameForMatch(toClipName);
+
+    if (reelKey && toKey && (toKey.startsWith(reelKey) || reelKey.startsWith(toKey))) {
+      return toClipName;
+    }
+
+    if (reelKey && fromKey && (fromKey.startsWith(reelKey) || reelKey.startsWith(fromKey))) {
+      return fromClipName;
+    }
+
+    // The comments follow the incoming transition event, so TO is the safer
+    // fallback when neither name can be matched cleanly to the Reel field.
+    return toClipName;
+  }
+
+  if (fromClipName) return fromClipName;
+  if (toClipName) return toClipName;
+
   return commentLines.map((x) => x.trim()).filter(Boolean).join(" ");
 }
 
@@ -102,7 +152,7 @@ function parseEDL(text) {
     events.push({
       ...parsed,
       srcDur: calculateDuration(parsed.srcIn, parsed.srcOut),
-      comment: cleanComment(commentLines),
+      comment: cleanComment(commentLines, parsed.reel),
     });
 
     i++;
@@ -171,7 +221,7 @@ const DELETE_PATTERNS = [
   /BACKPLATE/i,
   /BACKPLATES/i,
   /GREY[ _-]+BG/i,
-  /BUG/i,
+  /(^|[^A-Z0-9])BUG([^A-Z0-9]|$)/i,
   /FLICKER[ _-]+LIGHT/i,
   /FAST[ _-]+LIGHT/i,
   /TEST[ _-]+BAR/i,
@@ -354,10 +404,51 @@ function classify(reel, originalType) {
   return String(originalType ?? "");
 }
 
+function repairedClipName(event) {
+  const originalReel = removeAvidNewSuffixes(
+    String(event?.reel ?? "").trim()
+  );
+
+  let clipName = removeAvidNewSuffixes(
+    String(event?.comment ?? "").trim()
+  );
+
+  if (!clipName) return originalReel;
+
+  // Defensive cleanup in case a labelled clip-name comment reaches this stage.
+  clipName = removeAvidNewSuffixes(
+    clipName.replace(/^\*\s*(?:FROM|TO)\s+CLIP\s+NAME\s*:?\s*/i, "")
+  );
+
+  // Some Avid exports contain malformed clip-name comments such as:
+  //   =_AL_E_S_92-CRUSH_MKT RAILROAD_3FBKF7K.NEW.01
+  // The event Reel still contains the missing ARC prefix. Rebuild the name from
+  // that prefix; if the malformed comment contains no usable suffix, keep the
+  // complete original Reel instead.
+  if (clipName.startsWith("=")) {
+    const suffix = clipName.slice(1).trim();
+    const arcMatch = originalReel.match(/^([A-Z0-9]+ARC\d+)/i);
+
+    if (suffix && arcMatch) {
+      return arcMatch[1] + (suffix.startsWith("_") ? suffix : `_${suffix.replace(/^[_\-\s]+/, "")}`);
+    }
+
+    return originalReel || `'${clipName}`;
+  }
+
+  // Prevent any other malformed leading formula marker from being interpreted
+  // as a spreadsheet formula if no safe Reel fallback exists.
+  if (/^[+@]/.test(clipName)) {
+    return originalReel || `'${clipName}`;
+  }
+
+  return removeAvidNewSuffixes(clipName);
+}
+
 function buildRows(events) {
   return events.map((e) => [
     e.num,
-    e.comment || e.reel,
+    repairedClipName(e),
     e.type,
     e.tracks,
     e.srcIn,
