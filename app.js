@@ -1,4 +1,5 @@
 const FPS = 24;
+const EDL_CLEANER_VERSION = "1.0.4";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -420,26 +421,28 @@ function repairedClipName(event) {
     clipName.replace(/^\*\s*(?:FROM|TO)\s+CLIP\s+NAME\s*:?\s*/i, "")
   );
 
-  // Some Avid exports contain malformed clip-name comments such as:
+  // Some Avid exports contain malformed clip-name comments beginning with "=",
+  // for example:
   //   =_AL_E_S_92-CRUSH_MKT RAILROAD_3FBKF7K.NEW.01
-  // The event Reel still contains the missing ARC prefix. Rebuild the name from
-  // that prefix; if the malformed comment contains no usable suffix, keep the
-  // complete original Reel instead.
-  if (clipName.startsWith("=")) {
-    const suffix = clipName.slice(1).trim();
-    const arcMatch = originalReel.match(/^([A-Z0-9]+ARC\d+)/i);
+  //
+  // The actual event Reel on the EDL line is the authoritative filename and
+  // already contains the missing ARC number or other source prefix. Do not try
+  // to classify the malformed comment. Replace it with the event Reel before
+  // deletion, classification, review, or Excel export.
+  if (/^=/.test(clipName)) {
+    if (originalReel) return originalReel;
 
-    if (suffix && arcMatch) {
-      return arcMatch[1] + (suffix.startsWith("_") ? suffix : `_${suffix.replace(/^[_\-\s]+/, "")}`);
-    }
-
-    return originalReel || `'${clipName}`;
+    // Extremely defensive fallback for an EDL that has no usable Reel field.
+    // Strip the formula marker so the value cannot be interpreted as a formula.
+    return removeAvidNewSuffixes(clipName.slice(1))
+      .replace(/^[_\-\s]+/, "")
+      .trim();
   }
 
-  // Prevent any other malformed leading formula marker from being interpreted
-  // as a spreadsheet formula if no safe Reel fallback exists.
+  // Apply the same Reel-first safety rule to other spreadsheet formula markers.
   if (/^[+@]/.test(clipName)) {
-    return originalReel || `'${clipName}`;
+    if (originalReel) return originalReel;
+    return clipName.slice(1).trim();
   }
 
   return removeAvidNewSuffixes(clipName);
@@ -751,6 +754,10 @@ function startOver() {
   $("setupCard").classList.remove("hidden");
   setStatus("Ready", 0);
 }
+
+const versionTag = $("edlCleanerVersion");
+if (versionTag) versionTag.textContent = EDL_CLEANER_VERSION;
+console.info(`[EDL Cleaner] Build ${EDL_CLEANER_VERSION} loaded`);
 
 populateCategorySelect();
 $("createButton").addEventListener("click", createDocument);
