@@ -1,5 +1,5 @@
 const FPS = 24;
-const EDL_CLEANER_VERSION = "1.0.4";
+const EDL_CLEANER_VERSION = "1.0.5";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -351,6 +351,7 @@ const TEXTED_PATTERNS = [
   /ACTUAL[ _-]+AUDIO/i,
   /VERDICT/i,
   /BANNER/i,
+  /LOCATOR/i,
   /DWAYN/i,
   /DWAYNE/i,
   /DWA/i,
@@ -373,6 +374,9 @@ function isGraphics(reel) {
 
 function isProduction(reel) {
   const s = String(reel ?? "").trim();
+  // Three-character show prefix + YYMMDD + production clip metadata.
+  // Example: HSF-260801-B0002~85789317
+  if (/^HSF[_-]\d{6}[_-].+/i.test(s)) return true;
   if (/^[A-Z0-9]{4,7}[_-]\d{6}[_-].+/i.test(s)) return true;
   if (/^[A-Z0-9]{4}[A-Z0-9]{4}_\d{6}[A-Z0-9_-]*$/i.test(s)) return true;
   if (/^\d{6,8}C\d{1,3}(?:[_-].+)/i.test(s)) return true;
