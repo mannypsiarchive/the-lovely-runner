@@ -1,5 +1,5 @@
 const FPS = 24;
-const EDL_CLEANER_VERSION = "1.0.6";
+const EDL_CLEANER_VERSION = "1.0.7";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -355,6 +355,7 @@ const TEXTED_PATTERNS = [
   /VERDICT/i,
   /BANNER/i,
   /LOCATOR/i,
+  /CONTRIBUTOR_ID_/i,
   /DWAYN/i,
   /DWAYNE/i,
   /DWA/i,
