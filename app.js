@@ -1,5 +1,5 @@
 const FPS = 24;
-const EDL_CLEANER_VERSION = "1.0.5";
+const EDL_CLEANER_VERSION = "1.0.6";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -163,7 +163,10 @@ function parseEDL(text) {
 }
 
 function isArchival(reel) {
-  return /^.{4}ARC/i.test(String(reel ?? "").trim());
+  // Standard archival names have four characters before ARC. One production
+  // used a five-character show prefix (for example, CRIMEARC1234). Allow only
+  // those two exact prefix lengths so the exception stays deliberately narrow.
+  return /^.{4,5}ARC/i.test(String(reel ?? "").trim());
 }
 
 function audioChannel(track) {
