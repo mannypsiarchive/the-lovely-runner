@@ -11,7 +11,7 @@
     <header class="hero">
       <div>
         <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
-        <h1>Archival Logging Helper <span class="version-tag">1.22</span></h1>
+        <h1>Archival Logging Helper <span class="version-tag">1.23</span></h1>
         <p>Connect Archival Tracker, Batch Log and Rename Archival Files.</p>
       </div>
       <a class="button ghost back-home" href="index.html">← All tools</a>
@@ -75,7 +75,7 @@
         </div>
         <div class="field">
           <label for="arcStart">ARC Number Start</label>
-          <input id="arcStart" type="number" min="0" step="1" placeholder="e.g. 2530" autocomplete="off" value="">
+          <input id="arcStart" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="e.g. 2530" autocomplete="off" value="">
         </div>
         <div class="field">
           <label for="assetCount">Number of Assets</label>
@@ -83,7 +83,7 @@
         </div>
         <div class="field">
           <label for="arcFinish">ARC Number Finish</label>
-          <input id="arcFinish" class="calculated-field" type="number" readonly value="">
+          <input id="arcFinish" class="calculated-field" type="text" readonly value="">
         </div>
       </div>
 

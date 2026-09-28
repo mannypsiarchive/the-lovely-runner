@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.22";
+const LOGGER_BUILD = "1.23";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -516,7 +516,7 @@ async function updateClipPreview() {
     const description = descriptionFromSourceLink(item.sourceLink) || item.alamyMetadata?.description || descriptionFromFileName(item.file.name);
     const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
     const overrides = state.manualOverrides[item.row] || {};
-    const arcNumber = Number(startValue) + index;
+    const arcNumber = formatArcNumber(Number(startValue) + index);
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
       "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml((overrides.F ?? vendor) || "Unable to classify") +
       "</td><td>" + escapeHtml(overrides.H ?? "—") + "</td><td>" + escapeHtml(overrides.I ?? "—") + "</td><td>" + escapeHtml(description || "—") +
@@ -532,8 +532,14 @@ function updateAssetRangeFields(count, startValue) {
   if (countField) countField.value = count || 0;
   if (finishField) {
     const start = Number(startValue);
-    finishField.value = /^\d+$/.test(String(startValue)) && count > 0 ? start + count - 1 : "";
+    finishField.value = /^\d+$/.test(String(startValue)) && count > 0 ? formatArcNumber(start + count - 1) : "";
   }
+}
+
+function formatArcNumber(value) {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue < 0) return String(value || "");
+  return numericValue < 1000 ? String(numericValue).padStart(4, "0") : String(numericValue);
 }
 
 async function applyManualVendor() {
