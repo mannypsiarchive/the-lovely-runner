@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.23";
+const LOGGER_BUILD = "1.25";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -211,6 +211,8 @@ function sourceFileName(fileName) {
   if (shutterstockMatch) return shutterstockMatch[1];
   const pond5Match = stem.match(/^(\d{6,})-.+$/);
   if (pond5Match) return pond5Match[1];
+  const pond5FormatMatch = stem.match(/^(\d{6,})_[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/);
+  if (pond5FormatMatch) return pond5FormatMatch[1];
   return stem;
 }
 
@@ -224,9 +226,22 @@ function descriptionFromFileName(fileName) {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
 }
 
+function parseArcStart(value) {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const numericValue = Number(raw);
+  return Number.isSafeInteger(numericValue) && numericValue >= 0 ? numericValue : null;
+}
+
+function arcNumberForIndex(startValue, index) {
+  const start = parseArcStart(startValue);
+  return start === null ? "" : formatArcNumber(start + index);
+}
+
 function getClipRows() {
   const startValue = $("arcStart").value.trim();
-  const start = Number(startValue);
+  const start = parseArcStart(startValue);
+  if (start === null) return [];
   return state.clipFiles.filter((file) => classifyClip(file.name)).map((file, index) => {
     const type = classifyClip(file.name);
     return {
@@ -359,7 +374,7 @@ function vendorFromSource(sourceLink, fileName, alamyMetadata) {
   const link = String(sourceLink || "");
   const name = String(fileName || "");
   if (/gettyimages|Getty Images/i.test(link) || /gettyimages/i.test(name)) return "Getty Images";
-  if (/pond5\.com|Pond5/i.test(link) || /^\d{6,}-.+\.[A-Za-z0-9]+$/i.test(name)) return "Pond5";
+  if (/pond5\.com|Pond5/i.test(link) || /^\d{6,}-(?:.+)\.[A-Za-z0-9]+$/i.test(name) || /^\d{6,}_[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\.[A-Za-z0-9]+$/i.test(name)) return "Pond5";
   if (/shutterstock/i.test(link) || /shutterstock/i.test(name)) return "Shutterstock";
   if (alamyMetadata?.isAlamy || isLikelyAlamyFile(name)) return "Alamy";
   return "";
@@ -460,7 +475,7 @@ function descriptionFromSourceLink(sourceLink) {
 
 async function updateClipPreview() {
   const startValue = $("arcStart").value.trim();
-  const start = Number(startValue);
+  const start = parseArcStart(startValue);
   const preview = $("clipPreview");
   const files = state.clipFiles;
   updateAssetRangeFields(files.filter((file) => classifyClip(file.name)).length, startValue);
@@ -484,11 +499,18 @@ async function updateClipPreview() {
     return;
   }
   if (folderWarning) folderWarning.classList.add("hidden");
-  if (!/^\d+$/.test(startValue) || start < 0) {
+  if (start === null) {
     $("clipSelectionStatus").textContent = "Enter the ARC number to start at.";
+    const arcReadback = $("arcStartReadback");
+    if (arcReadback) arcReadback.textContent = "Enter a starting ARC number to calculate the first row.";
     preview.classList.add("hidden");
     $("logClipButton").disabled = true;
     return;
+  }
+
+  const arcReadback = $("arcStartReadback");
+  if (arcReadback) {
+    arcReadback.textContent = "First asset: ARC" + formatArcNumber(start) + " · writes to tracker row " + (start + 1) + ".";
   }
 
   const allRows = files.map((file, index) => ({
@@ -516,7 +538,7 @@ async function updateClipPreview() {
     const description = descriptionFromSourceLink(item.sourceLink) || item.alamyMetadata?.description || descriptionFromFileName(item.file.name);
     const archivalClass = archivalClassFromSource(item.sourceLink, item.file.name, item.alamyMetadata);
     const overrides = state.manualOverrides[item.row] || {};
-    const arcNumber = formatArcNumber(Number(startValue) + index);
+    const arcNumber = arcNumberForIndex(startValue, index);
     return "<tr><td>" + item.row + "</td><td>ARC" + arcNumber + "</td><td><strong>" + escapeHtml(item.sourceName) +
       "</strong><span class=\"original-file\">" + escapeHtml(item.file.name) + "</span></td><td>" + escapeHtml((overrides.F ?? vendor) || "Unable to classify") +
       "</td><td>" + escapeHtml(overrides.H ?? "—") + "</td><td>" + escapeHtml(overrides.I ?? "—") + "</td><td>" + escapeHtml(description || "—") +
@@ -531,8 +553,8 @@ function updateAssetRangeFields(count, startValue) {
   const finishField = $("arcFinish");
   if (countField) countField.value = count || 0;
   if (finishField) {
-    const start = Number(startValue);
-    finishField.value = /^\d+$/.test(String(startValue)) && count > 0 ? formatArcNumber(start + count - 1) : "";
+    const start = parseArcStart(startValue);
+    finishField.value = start !== null && count > 0 ? formatArcNumber(start + count - 1) : "";
   }
 }
 
@@ -655,7 +677,7 @@ function resetSourceFolder() {
 
 async function logTestClips() {
   const startValue = $("arcStart").value.trim();
-  if (!/^\d+$/.test(startValue) || Number(startValue) < 0 || !state.clipFiles.length) {
+  if (parseArcStart(startValue) === null || !state.clipFiles.length) {
     $("clipWriteStatus").textContent = "Choose a supported clip folder and enter an ARC number.";
     return;
   }
