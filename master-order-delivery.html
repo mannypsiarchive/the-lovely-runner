@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Master Order Delivery · The Lovely Runner</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .mod-card{padding:clamp(20px,4vw,34px);margin-bottom:22px}.mod-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.mod-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.mod-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}.mod-note{color:var(--muted);font-size:13px;line-height:1.5}.mod-status{margin-top:14px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(9,15,32,.48);color:var(--muted);font-size:13px;line-height:1.5}.mod-status.good{color:#8af0c4}.mod-status.error{color:#ffb3b3}.mod-map{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.mod-table-wrap{overflow:auto;margin-top:16px}.mod-table{width:100%;border-collapse:collapse;font-size:13px}.mod-table th,.mod-table td{padding:9px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}.mod-table th{color:#b9c7ff}.mod-shot{border:1px solid var(--border);border-radius:16px;padding:16px;margin:14px 0;background:rgba(9,15,32,.32)}.mod-frame-grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:12px;overflow:auto}.mod-frame{min-width:180px}.mod-frame canvas{display:block;width:100%;background:#080b13;border-radius:10px;aspect-ratio:16/9}.mod-frame label{display:block;margin:8px 0 4px;font-size:12px;color:var(--muted)}.mod-frame input{width:100%}.mod-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.mod-inline{display:flex;gap:8px;align-items:center}.mod-inline label{margin:0}.mod-progress{height:8px;background:#252d40;border-radius:9px;overflow:hidden;margin-top:12px}.mod-progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--violet));transition:width .2s}.mod-badge{display:inline-block;padding:5px 9px;border:1px solid var(--border);border-radius:999px;color:#b9c7ff;font-size:12px}.mod-empty{padding:18px;border:1px dashed var(--border);border-radius:12px;color:var(--muted)}.mod-help{margin-top:8px}.mod-section-title{margin:0 0 8px}.mod-check{display:flex;gap:8px;align-items:center;color:#d8def3;font-size:14px}.mod-check input{width:auto}.mod-video{position:fixed;left:-99999px;top:0;width:640px;height:360px;opacity:0;pointer-events:none}
+    @media(max-width:850px){.mod-map,.mod-grid.three,.mod-frame-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.mod-grid,.mod-grid.three,.mod-map,.mod-frame-grid{grid-template-columns:1fr}.mod-frame{min-width:0}}
+  </style>
+</head>
+<body>
+<main class="app-shell">
+  <header class="hero">
+    <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Delivery <span class="version-tag">0.1</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
+    <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
+  </header>
+
+  <section class="card mod-card">
+    <div class="eyebrow">STEP 01</div><h2 class="mod-section-title">Connect the archival tracker</h2>
+    <p>Paste the Google Sheet URL. The tracker can use a different cost-tracker tab name; you’ll choose the source and vendor-rate tabs after connecting.</p>
+    <div class="field"><label for="modSheetUrl">Google Sheet URL</label><input id="modSheetUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" autocomplete="off"></div>
+    <div class="mod-actions"><button class="button primary" id="modConnect" disabled>Connect Google Sheet</button><button class="button secondary" id="modDisconnect" disabled>Disconnect</button></div>
+    <div class="mod-status" id="modConnectionStatus" aria-live="polite">Loading Google connection…</div>
+    <div class="mod-grid hidden" id="modTabs">
+      <div class="field"><label for="modSourceTab">Cost Report / Legal Flag tab</label><select id="modSourceTab"></select></div>
+      <div class="field"><label for="modRatesTab">VENDOR INFO AND RATES tab</label><select id="modRatesTab"></select></div>
+    </div>
+  </section>
+
+  <section class="card mod-card hidden" id="modMappingCard">
+    <div class="eyebrow">STEP 02</div><h2 class="mod-section-title">Confirm the tracker columns</h2>
+    <p>Lovely Runner will guess from the headers. Check the selections before loading archival rows.</p>
+    <div class="mod-map" id="modColumnMap"></div>
+    <div class="mod-actions"><button class="button primary" id="modLoadRows">Load Archival Rows</button></div>
+    <div class="mod-status" id="modLoadStatus" aria-live="polite"></div>
+  </section>
+
+  <section class="card mod-card hidden" id="modOrderCard">
+    <div class="eyebrow">STEP 03</div><h2 class="mod-section-title">Choose a vendor and order type</h2>
+    <div class="mod-grid">
+      <div class="field"><label for="modVendor">Vendor / Source</label><select id="modVendor"></select></div>
+      <div class="field"><label for="modOrderType">Order type <span class="mod-badge" id="modSuggestion">Suggestion: —</span></label><select id="modOrderType"><option value="asset">Per Asset</option><option value="second">Per Second</option></select></div>
+    </div>
+    <div class="mod-status" id="modOrderSummary" aria-live="polite"></div>
+    <div class="mod-actions" id="modAssetActions"><button class="button primary" id="modGenerateAsset">Generate Per Asset Order Tab</button><button class="button secondary" id="modGenerateAllAsset">Generate All Per Asset Vendors</button></div>
+    <div class="mod-actions hidden" id="modSecondActions"><button class="button primary" id="modStartSecond">Prepare Per Second Select Review</button></div>
+    <div class="mod-note mod-help">Per-asset tabs contain only unique Original File Names. The all-vendor tab places vendors alphabetically with one blank column between vendor blocks.</div>
+  </section>
+
+  <section class="card mod-card hidden" id="modSecondCard">
+    <div class="eyebrow">STEP 04</div><h2 class="mod-section-title">Select the cut and raw screeners</h2>
+    <p>Choose the downloaded cut and the folder containing the raw screener tapes. Screener names should include the ARC number, for example <code>FOR7ARC0753</code>.</p>
+    <div class="mod-grid">
+      <div class="field"><label for="modCutFile">Reference cut</label><input id="modCutFile" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v"></div>
+      <div class="field"><label for="modScreenerFiles">Raw screener folder</label><input id="modScreenerFiles" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v" multiple webkitdirectory directory></div>
+    </div>
+    <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">OCR output is a suggestion for review. Frame comparisons are displayed without automatic mismatch decisions.</span></div>
+    <div class="mod-actions"><button class="button primary" id="modBuildFrames">Build Shot Review</button><button class="button secondary" id="modWriteSecond" disabled>Write Reviewed Order Tab to Google Sheet</button></div>
+    <div class="mod-progress"><div id="modProgressBar"></div></div><div class="mod-status" id="modFrameStatus" aria-live="polite"></div>
+    <div id="modShots"></div>
+  </section>
+  <video class="mod-video" id="modVideo" muted playsinline></video>
+</main>
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="master-order-delivery.js?v=0.1"></script>
+</body>
+</html>
