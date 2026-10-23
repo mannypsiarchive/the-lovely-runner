@@ -1,4 +1,4 @@
-/* Master Order Helper 1.11 test — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.12 test — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -72,8 +72,36 @@ async function modConnect(){try{modState.id=modParseId(mod$("modSheetUrl").value
 async function modDisconnect(){const t=gapi.client.getToken();if(t?.access_token)google.accounts.oauth2.revoke(t.access_token);gapi.client.setToken("");modState.id="";modState.sourceRows=[];modState.vendors=[];modState.assignments.clear();mod$("modTabs").classList.add("hidden");mod$("modMappingCard").classList.add("hidden");mod$("modOrderCard").classList.add("hidden");mod$("modSecondCard").classList.add("hidden");modStatus("Disconnected.");mod$("modDisconnect").disabled=true;}
 async function modReadTab(title){const r=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:modState.id,range:modQuote(title)+"!A1:AZ",valueRenderOption:"FORMATTED_VALUE"});return r.result.values||[];}
 async function modLoadRateTab(){const data=await modReadTab(mod$("modRatesTab").value);if(!data.length)return;const h=data[0]||[];let vendorIx=h.findIndex(x=>/vendor|source/i.test(String(x)));if(vendorIx<0)vendorIx=0;modState.rates.clear();modState.vendors=[];data.slice(1).forEach(row=>{const name=String(row[vendorIx]||"").trim();if(!name)return;const ftg=String(row[14]||"").trim();const still=String(row[16]||"").trim();modState.rates.set(name,{footage:ftg,still});modState.vendors.push(name);});modState.vendors=[...new Set(modState.vendors)].sort((a,b)=>a.localeCompare(b));}
-function modBuildMap(headers){const holder=mod$("modColumnMap");holder.replaceChildren();MOD_FIELDS.forEach(field=>{const box=document.createElement("div");box.className="field";const lab=document.createElement("label");lab.textContent=field.label;lab.htmlFor="modMap_"+field.key;const sel=document.createElement("select");sel.id="modMap_"+field.key;const options=[{value:"",label:"Not mapped"},...headers.map((h,i)=>({value:String(i),label:`${String.fromCharCode(65+i)} · ${h||"(blank header)"}`}))];modOptions(sel,options);const alias=field.aliases.map(modNorm);let index=headers.findIndex(h=>alias.includes(modNorm(h)));if(index<0)index=headers.findIndex(h=>alias.some(a=>a.length>3&&modNorm(h).includes(a)));if(index>=0)sel.value=String(index);box.append(lab,sel);holder.append(box);});mod$("modMappingCard").classList.remove("hidden");}
-async function modLoadRows(){try{modStatus("Loading source tab…");const rows=await modReadTab(mod$("modSourceTab").value);if(rows.length<2)throw Error("The selected tab needs a header row and data rows.");modState.sourceHeaders=rows[0];modState.mapping={};MOD_FIELDS.forEach(f=>{const v=mod$("modMap_"+f.key).value;modState.mapping[f.key]=v===""?null:Number(v);});const get=(row,key)=>{const i=modState.mapping[key];return i==null?"":String(row[i]??"").trim();};modState.sourceRows=rows.slice(1).map((r,i)=>({rowNumber:i+2,values:r,vendor:get(r,"vendor"),type:get(r,"type"),filename:get(r,"filename"),sftype:get(r,"sftype"),srcIn:get(r,"srcIn"),srcOut:get(r,"srcOut"),timeIn:get(r,"timeIn"),timeOut:get(r,"timeOut"),description:get(r,"description"),arc:get(r,"arc")})).filter(r=>r.vendor&&(r.filename||r.timeIn||r.timeOut||r.srcIn||r.description));if(!modState.sourceRows.length)throw Error("No source rows found. Check the source, filename, and timecode column mappings.");const sources=[...new Set(modState.sourceRows.map(r=>r.vendor))].sort((a,b)=>a.localeCompare(b));modState.vendors=sources;modState.assignments.clear();sources.forEach(name=>{const rs=modState.sourceRows.filter(r=>r.vendor===name),kinds=new Set(rs.map(r=>{const rate=modState.rates.get(name)||{};return modRateType(modIsStill(r)?rate.still:rate.footage);}).filter(Boolean));modState.assignments.set(name,kinds.size===1?[...kinds][0]:"");});mod$("modOrderCard").classList.remove("hidden");modRenderSourceAssignments();mod$("modOrderStatus").textContent=`Loaded ${modState.sourceRows.length} EDL rows across ${sources.length} sources. Choose how each source should be handled.`;modStatus("Source list loaded.","good");}catch(e){mod$("modLoadStatus").textContent=modErr(e);modStatus("Could not load rows: "+modErr(e),"error");}}
+function modLooksLikeTc(value){return /^\d{2}[:;]\d{2}[:;]\d{2}[:;]\d{2}$/.test(String(value??"").trim());}
+function modTimeHeaderScore(key,header){
+  const raw=String(header??"").toLowerCase(),h=modNorm(header),tokens=raw.split(/[^a-z0-9]+/).filter(Boolean),side=key.endsWith("In")?"in":"out",isSource=key.startsWith("src");
+  const hasSide=tokens.includes(side)||tokens.some(t=>[`${side}tc`,`${side}time`,`${side}timecode`,`time${side}`,`timecode${side}`,`tc${side}`,`source${side}`,`src${side}`,`cut${side}`,`timeline${side}`,`program${side}`,`record${side}`].includes(t));
+  if(!hasSide){if(!isSource&&/timecode|tc/.test(h)&&((side==="in"&&/start|begin/.test(h))||(side==="out"&&/end|finish/.test(h))))return 95;return -100;}
+  if(isSource){if(/source|src/.test(h))return h===`source${side}`||h===`src${side}`?150:120;if(/raw|original/.test(h))return 70;return -100;}
+  if(/source|src|raw/.test(h))return -100;
+  if(/cut|timeline|show|program|record|sequence|edit/.test(h))return 130;
+  if(h===`time${side}`)return 115;
+  if(/timecode|tc/.test(h))return 90;
+  if(/time/.test(h))return 85;
+  if(tokens.length===1&&tokens[0]===side)return 30;
+  return -100;
+}
+function modResolveTimeColumns(headers,data,current){
+  const resolved={...current},adjusted=[];
+  for(const key of ["srcIn","srcOut","timeIn","timeOut"]){
+    const candidates=headers.map((header,index)=>{
+      const nonempty=data.map(r=>String(r[index]??"").trim()).filter(Boolean),valid=nonempty.filter(modLooksLikeTc).length;
+      const ratio=nonempty.length?valid/nonempty.length:0,headerScore=modTimeHeaderScore(key,header);
+      return{index,header,valid,ratio,headerScore,score:headerScore+ratio*45};
+    }).filter(c=>c.headerScore>0&&c.valid>0&&c.ratio>=.5).sort((a,b)=>b.score-a.score||b.valid-a.valid);
+    if(!candidates.length)continue;
+    const selected=Number(resolved[key]),chosen=candidates.find(c=>c.index===selected&&c.headerScore>=85)||candidates[0];
+    if(selected!==chosen.index){resolved[key]=chosen.index;adjusted.push(`${key} → ${String.fromCharCode(65+chosen.index)} (${chosen.header})`);}
+  }
+  return{mapping:resolved,adjusted};
+}
+function modBuildMap(headers){const holder=mod$("modColumnMap");holder.replaceChildren();MOD_FIELDS.forEach(field=>{const box=document.createElement("div");box.className="field";const lab=document.createElement("label");lab.textContent=field.label;lab.htmlFor="modMap_"+field.key;const sel=document.createElement("select");sel.id="modMap_"+field.key;const options=[{value:"",label:"Not mapped"},...headers.map((h,i)=>({value:String(i),label:`${String.fromCharCode(65+i)} · ${h||"(blank header)"}`}))];modOptions(sel,options);const alias=field.aliases.map(modNorm);let index=headers.findIndex(h=>alias.includes(modNorm(h)));if(index<0)index=headers.findIndex(h=>alias.some(a=>a.length>3&&modNorm(h).includes(a)));if(index>=0)sel.value=String(index);const sample=document.createElement("div");sample.className="mod-note mod-map-sample";sample.id=`modMapSample_${field.key}`;const update=()=>{const i=Number(sel.value);sample.textContent=i>=0&&headers[i]!==undefined?`Column sample: ${String(headers[i]||"(blank header)")} · first value: ${String(modState.mappingPreview?.[i]??"")||"(blank)"}`:"Column sample: not mapped";};sel.addEventListener("change",update);box.append(lab,sel,sample);holder.append(box);update();});mod$("modMappingCard").classList.remove("hidden");}
+async function modLoadRows(){try{modStatus("Loading source tab…");const rows=await modReadTab(mod$("modSourceTab").value);if(rows.length<2)throw Error("The selected tab needs a header row and data rows.");modState.sourceHeaders=rows[0];modState.mapping={};MOD_FIELDS.forEach(f=>{const v=mod$("modMap_"+f.key).value;modState.mapping[f.key]=v===""?null:Number(v);});const tcResolution=modResolveTimeColumns(rows[0],rows.slice(1),modState.mapping);modState.mapping=tcResolution.mapping;for(const key of ["srcIn","srcOut","timeIn","timeOut"]){const sel=mod$("modMap_"+key);if(sel&&modState.mapping[key]!=null)sel.value=String(modState.mapping[key]);}modState.mappingPreview=rows[1]||[];for(const key of ["srcIn","srcOut","timeIn","timeOut"]){const sel=mod$("modMap_"+key);if(sel)sel.dispatchEvent(new Event("change"));}const get=(row,key)=>{const i=modState.mapping[key];return i==null?"":String(row[i]??"").trim();};modState.sourceRows=rows.slice(1).map((r,i)=>({rowNumber:i+2,values:r,vendor:get(r,"vendor"),type:get(r,"type"),filename:get(r,"filename"),sftype:get(r,"sftype"),srcIn:get(r,"srcIn"),srcOut:get(r,"srcOut"),timeIn:get(r,"timeIn"),timeOut:get(r,"timeOut"),description:get(r,"description"),arc:get(r,"arc")})).filter(r=>r.vendor&&(r.filename||r.timeIn||r.timeOut||r.srcIn||r.description));if(!modState.sourceRows.length)throw Error("No source rows found. Check the source, filename, and timecode column mappings.");const sources=[...new Set(modState.sourceRows.map(r=>r.vendor))].sort((a,b)=>a.localeCompare(b));modState.vendors=sources;modState.assignments.clear();sources.forEach(name=>{const rs=modState.sourceRows.filter(r=>r.vendor===name),kinds=new Set(rs.map(r=>{const rate=modState.rates.get(name)||{};return modRateType(modIsStill(r)?rate.still:rate.footage);}).filter(Boolean));modState.assignments.set(name,kinds.size===1?[...kinds][0]:"");});mod$("modOrderCard").classList.remove("hidden");modRenderSourceAssignments();const correction=tcResolution.adjusted.length?` Timecode columns were corrected from tracker values: ${tcResolution.adjusted.join("; ")}.`:" Timecode column samples are shown above for review.";mod$("modOrderStatus").textContent=`Loaded ${modState.sourceRows.length} EDL rows across ${sources.length} sources. Choose how each source should be handled.`;mod$("modLoadStatus").textContent=correction;modStatus("Source list loaded.","good");}catch(e){mod$("modLoadStatus").textContent=modErr(e);modStatus("Could not load rows: "+modErr(e),"error");}}
 function modIsStill(r){const s=r.sftype.toLowerCase();return s==="s"||/still|photo|image/.test(s);}
 function modRateType(value){const v=String(value||"").toLowerCase();if(/per\s*second|per\s*sec|second|sec\b/.test(v))return"second";if(/per\s*asset|per\s*item|per\s*clip|asset|item|flat fee/.test(v))return"asset";return"";}
 function modVendorRows(){return modState.sourceRows.filter(r=>r.vendor===modState.activeSource);}
@@ -141,11 +169,14 @@ async function modCapture(video,file,tc,canvas,offset=0){
     if(!modState.mediaMetadata)throw Error("Reference cut metadata has not been detected.");
     fps=modState.mediaMetadata.fps;seconds=modCutSeconds(tc)+offset/fps;
   }else{
-    const metadata=modState.screenerMetadata.get(modScreenerKey(file));
+    let metadata=modState.screenerMetadata.get(modScreenerKey(file));
     if(!metadata)throw Error(`Could not read embedded start timecode and frame rate for screener ${file.name}.`);
-    fps=metadata.fps;const frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);
-    if(frames<0)throw Error(`Source time ${tc} is before screener ${file.name} start ${metadata.startTimecode}.`);
+    fps=metadata.fps;let frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);
     seconds=frames/fps-offset;
+    if(seconds<0||seconds>video.duration+.05){
+      try{const visualStart=await modVisualStartTc(video,file,fps);if(visualStart){const visualFrames=modParseTcFrames(tc,fps)-modParseTcFrames(visualStart,fps),visualSeconds=visualFrames/fps-offset;if(visualSeconds>=0&&visualSeconds<=video.duration+.05){metadata={...metadata,startTimecode:visualStart,source:metadata.source+" + first-frame BITC OCR"};modState.screenerMetadata.set(modScreenerKey(file),metadata);seconds=visualSeconds;} }}catch(e){console.warn("Could not align screener from first-frame BITC",e);}
+    }
+    if(seconds<0||seconds>video.duration+.05)throw Error(`Source TC ${tc} maps to ${seconds.toFixed(2)}s in a ${video.duration.toFixed(2)}s screener (detected start ${metadata.startTimecode}). Check the Source In/Out column mapping or the screener’s start timecode.`);
   }
   await modSeek(video,seconds,fps);
   const ctx=canvas.getContext("2d");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;
@@ -158,6 +189,20 @@ function modCutSeconds(tc){
   const frames=modParseTcFrames(tc,metadata.fps)-modParseTcFrames(metadata.startTimecode,metadata.fps);
   if(frames<0)throw Error(`EDL time ${tc} is before the reference file start ${metadata.startTimecode}.`);
   return frames/metadata.fps;
+}
+async function modVisualStartTc(video,file,fps){
+  await modVideoLoad(video,file);
+  if(video.readyState<2)await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{video.removeEventListener("loadeddata",ok);reject(Error("Timed out decoding the first video frame for timecode alignment."));},10000);const ok=()=>{clearTimeout(timer);resolve();};video.addEventListener("loadeddata",ok,{once:true});});
+  await modSeek(video,0,fps);
+  const canvas=document.createElement("canvas");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
+  let paddle=null;try{paddle=await modEnsurePaddle();}catch(e){console.warn("PaddleOCR unavailable for start-timecode alignment",e);}
+  const tc=await modReadBurntInTc(paddle,canvas);
+  return modLooksLikeTc(tc)?tc:"";
+}
+async function modAlignReferenceCutStart(){
+  const meta=modState.mediaMetadata;if(!meta||meta.visualStartChecked||!/^00:00:00[:;]00$/.test(meta.startTimecode))return;
+  meta.visualStartChecked=true;mod$("modFrameStatus").textContent="Reference cut metadata starts at zero; checking its first visible frame for the show timecode…";
+  try{const tc=await modVisualStartTc(mod$("modVideoCut"),modState.cut,meta.fps);if(tc&&!/^00:00:00[:;]00$/.test(tc)){meta.startTimecode=tc;meta.source+=" + first-frame BITC OCR";mod$("modTimelineStart").value=tc;mod$("modMetadataStatus").textContent=`Metadata timecode was reset to zero. Read first-frame BITC ${tc}; cut frames will use this show-timecode start.`;}}catch(e){console.warn("Could not align reference cut from first-frame BITC",e);}
 }
 function modWaitForMedia(video,eventName,timeoutMs=15000){
   return new Promise((resolve,reject)=>{
@@ -222,6 +267,7 @@ function modStepCutFrame(event){
   const status=wrap.querySelector("[data-player-status]");
   if(status)status.textContent=`Paused · stepped one frame ${delta>0?"forward":"back"}. Use the arrow keys again to continue frame by frame.`;
 }
+function modMarkFrameUnavailable(canvas,label){const ctx=canvas.getContext("2d");canvas.width=640;canvas.height=360;ctx.fillStyle="#151b2a";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#d5d9e3";ctx.font="600 20px Arial, sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,canvas.width/2,canvas.height/2,canvas.width-40);canvas.dataset.captured="";canvas.dataset.error="true";}
 function modOpenFrame(canvas){
   try{const w=window.open();if(w){w.document.write(`<title>Frame review</title><img src="${canvas.toDataURL("image/png")}" style="max-width:100%;height:auto;background:#111">`);w.document.close();}}catch(e){console.warn("Could not open full-size frame",e);}
 }
@@ -237,6 +283,7 @@ async function modBuildFrames(){
   if(!modState.cut)return alert("Choose the reference cut first.");
   if(!modState.mediaMetadata)return alert("Wait for the reference cut's start timecode and frame rate to be detected before building the shot review.");
   if(!modState.screeners.length)return alert("Choose the raw screener folder.");
+  await modAlignReferenceCutStart();
   const fps=modState.mediaMetadata.fps;
   const rows=[...modVendorRows()].sort((a,b)=>{
     let ai,bi;try{ai=modParseTcFrames(a.timeIn,fps);}catch{ai=Number.POSITIVE_INFINITY;}
@@ -247,6 +294,8 @@ async function modBuildFrames(){
     return ao-bo||(a.rowNumber||0)-(b.rowNumber||0);
   });
   if(!rows.length)return;
+  const badCutRows=rows.filter(r=>!modLooksLikeTc(r.timeIn)||!modLooksLikeTc(r.timeOut));
+  if(badCutRows.length){const examples=badCutRows.slice(0,3).map(r=>`row ${r.rowNumber}: In “${r.timeIn||"blank"}”, Out “${r.timeOut||"blank"}”`).join("; ");mod$("modFrameStatus").textContent=`Shot review stopped before capture: ${badCutRows.length} row(s) do not have valid Cut/Timeline In and Out timecodes (${examples}). Check the highlighted timecode column samples above.`;return;}
   const container=mod$("modShots");container.replaceChildren();modState.shots=[];mod$("modWriteSecond").disabled=true;mod$("modProgressBar").style.width="0%";
   mod$("modFrameStatus").textContent=`Preparing ${rows.length} shots in show Cut In / Cut Out order. Capturing cut images three frames inside both boundaries.`;
   const fragment=document.createDocumentFragment();
@@ -263,12 +312,12 @@ async function modBuildFrames(){
   for(const shot of shots){
     const errors=[];
     const cutRequests=[[mod$("modVideoCut"),modState.cut,shot.timeIn,shot.canvases[0],3,"Cut In"],[mod$("modVideoCut"),modState.cut,shot.timeOut,shot.canvases[1],-3,"Cut Out"]];
-    for(const [video,file,tc,canvas,frames,label] of cutRequests){try{await modCapture(video,file,tc,canvas,frames);}catch(e){errors.push(`${label}: ${modErr(e)}`);}}
+    for(const [video,file,tc,canvas,frames,label] of cutRequests){try{await modCapture(video,file,tc,canvas,frames);}catch(e){errors.push(`${label}: ${modErr(e)}`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);}}
     if(shot.screener){
       const sourceRequests=[[shot.srcIn,shot.canvases[2],"Source In"],[shot.srcOut,shot.canvases[3],"Source Out"]];
-      for(const [tc,canvas,label] of sourceRequests){try{await modCapture(mod$("modVideoSource"),shot.screener,tc,canvas,0);}catch(e){errors.push(`${label}: ${modErr(e)}`);}}
-    }else{shot.error="No matching screener file";errors.push("Source In/Out: no matching screener file");}
-    if(errors.length){shot.error=errors.join(" · ");const n=document.createElement("p");n.className="mod-status error";n.textContent="Some frames could not be extracted: "+shot.error;shot.card.append(n);}
+      for(const [tc,canvas,label] of sourceRequests){if(!modLooksLikeTc(tc)){errors.push(`${label}: “${tc||"blank"}” is not a timecode; check the tracker column sample.`);modMarkFrameUnavailable(canvas,`${label} timecode unavailable`);continue;}try{await modCapture(mod$("modVideoSource"),shot.screener,tc,canvas,0);}catch(e){errors.push(`${label}: ${modErr(e)}`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);}}
+    }else{shot.error="No matching screener file";errors.push("Source In/Out: no matching screener file");modMarkFrameUnavailable(shot.canvases[2],"No screener matched");modMarkFrameUnavailable(shot.canvases[3],"No screener matched");}
+    if(modLooksLikeTc(shot.srcIn)&&modLooksLikeTc(shot.srcOut)){try{if(modParseTcFrames(shot.srcOut,modState.screenerMetadata.get(modScreenerKey(shot.screener))?.fps||fps)<modParseTcFrames(shot.srcIn,modState.screenerMetadata.get(modScreenerKey(shot.screener))?.fps||fps))errors.push("Source Out precedes Source In; verify the two source-timecode columns.");}catch{}}if(errors.length){shot.error=errors.join(" · ");const n=document.createElement("p");n.className="mod-status error";n.textContent="Review this row: "+shot.error;shot.card.append(n);}
     captured++;mod$("modProgressBar").style.width=Math.round(captured/rows.length*80)+"%";
     mod$("modFrameStatus").textContent=`Capturing Cut In, Cut Out, and source frames in show order: ${captured} of ${rows.length}.`;
   }
