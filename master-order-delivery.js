@@ -1,4 +1,4 @@
-/* Master Order Helper 1.4 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.5 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -62,7 +62,7 @@ function modUniqueTabName(base){const stamp=new Date().toISOString().slice(0,19)
 async function modWriteTab(title,values,styleHeader=false){const created=await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:modState.id,resource:{requests:[{addSheet:{properties:{title,gridProperties:{rowCount:Math.max(1000,values.length+20),columnCount:Math.max(26,values[0]?.length||26)}}}}]}});await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:modState.id,range:modQuote(title)+"!A1",valueInputOption:"RAW",resource:{values}});if(styleHeader){const sheetId=created.result.replies[0].addSheet.properties.sheetId;await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:modState.id,resource:{requests:[{repeatCell:{range:{sheetId,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:values[0].length},cell:{userEnteredFormat:{backgroundColor:{red:0.84,green:0.92,blue:0.98},textFormat:{bold:true}}},fields:"userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.bold"}}]}});}}
 function modVendorBlock(vendor){const ids=[...new Set(modState.sourceRows.filter(r=>r.vendor===vendor).map(r=>r.filename.trim()).filter(Boolean))];return {vendor,ids};}
 function modAssetMatrix(blocks){const width=blocks.length*2-1,max=Math.max(1,...blocks.map(b=>b.ids.length));const grid=Array.from({length:max+1},()=>Array(width).fill(""));blocks.forEach((b,i)=>{const c=i*2;grid[0][c]=b.vendor;b.ids.forEach((id,r)=>grid[r+1][c]=id);});return grid;}
-async function modGenerateOrders(){const assets=[...modState.assignments].filter(([,k])=>k==="asset").map(([n])=>n),fair=[...modState.assignments].filter(([,k])=>k==="fairuse").map(([n])=>n),pd=[...modState.assignments].filter(([,k])=>k==="pd").map(([n])=>n);const total=assets.length+fair.length+pd.length;if([...modState.assignments.values()].some(x=>!x))return alert("Choose an order type for every source, including N/A, before creating output tabs.");if(!total)return alert("There are no Per Asset, Fair Use, or Public Domain tabs to create yet.");if(!confirm(`Create output tabs for ${assets.length} Per Asset source(s), ${fair.length} Fair Use source(s), and ${pd.length} Public Domain source(s)?`))return;const button=mod$("modGenerateOrders");button.disabled=true;try{const made=[];if(assets.length){const blocks=assets.map(modVendorBlock);const name=modUniqueTabName("MO Asset");await modWriteTab(name,modAssetMatrix(blocks),true);made.push(`${name} (Per Asset)`);}if(fair.length){const rows=modState.sourceRows.filter(r=>fair.includes(r.vendor));const values=[["Element / Original File Name","Source","Show In","Show Out","Description","Tracker Row"],...rows.map(r=>[r.filename,r.vendor,r.timeIn,r.timeOut,r.description,r.rowNumber])];const name=modUniqueTabName("MO Fair Use");await modWriteTab(name,values);made.push(`${name} (Fair Use)`);}if(pd.length){const rows=modState.sourceRows.filter(r=>pd.includes(r.vendor)),values=[modState.sourceHeaders,...rows.map(r=>r.values)];const name=modUniqueTabName("MO Public Domain");await modWriteTab(name,values);made.push(`${name} (Public Domain)`);}mod$("modOrderStatus").textContent="Created: "+made.join(" · ");}catch(e){mod$("modOrderStatus").textContent="Could not create all output tabs: "+modErr(e);}finally{button.disabled=false;}}
+async function modGenerateOrders(){const assets=[...modState.assignments].filter(([,k])=>k==="asset").map(([n])=>n),fair=[...modState.assignments].filter(([,k])=>k==="fairuse").map(([n])=>n),pd=[...modState.assignments].filter(([,k])=>k==="pd").map(([n])=>n);const total=assets.length+fair.length+pd.length;if(!total)return alert("There are no Per Asset, Fair Use, or Public Domain tabs to create yet. Sources marked N/A or left unassigned are skipped.");if(!confirm(`Create output tabs for ${assets.length} Per Asset source(s), ${fair.length} Fair Use source(s), and ${pd.length} Public Domain source(s)? Sources marked N/A or left unassigned will be skipped.`))return;const button=mod$("modGenerateOrders");button.disabled=true;try{const made=[];if(assets.length){const blocks=assets.map(modVendorBlock);const name=modUniqueTabName("MO Asset");await modWriteTab(name,modAssetMatrix(blocks),true);made.push(`${name} (Per Asset)`);}if(fair.length){const rows=modState.sourceRows.filter(r=>fair.includes(r.vendor));const values=[["Element / Original File Name","Source","Show In","Show Out","Description","Tracker Row"],...rows.map(r=>[r.filename,r.vendor,r.timeIn,r.timeOut,r.description,r.rowNumber])];const name=modUniqueTabName("MO Fair Use");await modWriteTab(name,values);made.push(`${name} (Fair Use)`);}if(pd.length){const rows=modState.sourceRows.filter(r=>pd.includes(r.vendor)),values=[modState.sourceHeaders,...rows.map(r=>r.values)];const name=modUniqueTabName("MO Public Domain");await modWriteTab(name,values);made.push(`${name} (Public Domain)`);}mod$("modOrderStatus").textContent="Created: "+made.join(" · ");}catch(e){mod$("modOrderStatus").textContent="Could not create all output tabs: "+modErr(e);}finally{button.disabled=false;}}
 function modExtractArc(row){const text=(row.arc+" "+row.filename);const m=text.match(/[A-Z0-9]{4,5}ARC\d{4,}/i);return m?m[0].toUpperCase():"";}
 function modFindScreener(arc){if(!arc)return null;return modState.screeners.find(f=>f.name.toUpperCase().includes(arc.toUpperCase()))||null;}
 function modLoadLocalFiles(){const cut=mod$("modCutFile").files[0];modState.cut=cut||null;modState.screeners=[...mod$("modScreenerFiles").files].filter(f=>f.type.startsWith("video/")||/\.(mov|mp4|mxf|m4v|avi|mpg|mpeg|mkv|webm|mts|m2ts)$/i.test(f.name));}
@@ -89,15 +89,22 @@ async function modSeek(video,time){
   const t=Number(time);
   if(!Number.isFinite(t)||t<0)throw Error("The requested frame is earlier than the cut timeline start. Check the start TC.");
   if(t>video.duration+.05)throw Error(`The requested frame (${t.toFixed(2)}s) is beyond this video’s duration (${video.duration.toFixed(2)}s). Check the cut timeline start TC.`);
-  if(Math.abs(video.currentTime-t)>.002){
-    await new Promise((resolve,reject)=>{
-      const cleanup=()=>{video.removeEventListener("seeked",done);video.removeEventListener("error",bad);};
-      const done=()=>{cleanup();resolve();};const bad=()=>{cleanup();reject(Error("Could not seek to the requested timecode."));};
-      video.addEventListener("seeked",done,{once:true});video.addEventListener("error",bad,{once:true});video.currentTime=t;
-    });
+  let lastDelta=Infinity;
+  for(let attempt=0;attempt<3;attempt++){
+    if(Math.abs(video.currentTime-t)>.002){
+      await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>{cleanup();reject(Error("Timed out while seeking to the requested timecode."));},10000);
+        const cleanup=()=>{clearTimeout(timer);video.removeEventListener("seeked",done);video.removeEventListener("error",bad);};
+        const done=()=>{cleanup();resolve();};const bad=()=>{cleanup();reject(Error("Could not seek to the requested timecode."));};
+        video.addEventListener("seeked",done,{once:true});video.addEventListener("error",bad,{once:true});video.currentTime=Math.max(0,t-(attempt?2:0));
+      });
+      if(attempt) { video.currentTime=t; await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{cleanup();reject(Error("Timed out while retrying the requested frame."));},10000);const cleanup=()=>{clearTimeout(timer);video.removeEventListener("seeked",done);};const done=()=>{cleanup();resolve();};video.addEventListener("seeked",done,{once:true});}); }
+    }
+    await modNextDecodedFrame(video);
+    lastDelta=Math.abs(video.currentTime-t);
+    if(lastDelta<=.15&&video.readyState>=2&&video.videoWidth&&video.videoHeight)return;
   }
-  await modNextDecodedFrame(video);
-  if(Math.abs(video.currentTime-t)>.15)throw Error(`The video landed at ${video.currentTime.toFixed(2)}s instead of ${t.toFixed(2)}s.`);
+  throw Error(`Could not decode the requested frame at ${t.toFixed(2)}s (landed at ${video.currentTime.toFixed(2)}s). Try converting the screener to a browser-supported MP4.`);
 }
 function modTcSeconds(tc,fps=24){
   const p=String(tc||"").replaceAll(";",":").split(":").map(Number);
@@ -145,12 +152,10 @@ async function modBuildFrames(){
   let captured=0;
   for(const shot of shots){
     if(shot.screener){
-      try{
-        await modCapture(mod$("modVideoCut"),modState.cut,shot.timeIn,shot.canvases[0],cutOffset);
-        await modCapture(mod$("modVideoCut"),modState.cut,shot.timeOut,shot.canvases[1],cutOffset);
-        await modCapture(mod$("modVideoSource"),shot.screener,shot.srcIn,shot.canvases[2]);
-        await modCapture(mod$("modVideoSource"),shot.screener,shot.srcOut,shot.canvases[3]);
-      }catch(e){shot.error=modErr(e);const n=document.createElement("p");n.className="mod-status error";n.textContent="Frame extraction: "+shot.error;shot.card.append(n);}
+      const requests=[[mod$("modVideoCut"),modState.cut,shot.timeIn,shot.canvases[0],cutOffset,"Cut In"],[mod$("modVideoCut"),modState.cut,shot.timeOut,shot.canvases[1],cutOffset,"Cut Out"],[mod$("modVideoSource"),shot.screener,shot.srcIn,shot.canvases[2],0,"Source In"],[mod$("modVideoSource"),shot.screener,shot.srcOut,shot.canvases[3],0,"Source Out"]];
+      const errors=[];
+      for(const [video,file,tc,canvas,offset,label] of requests){try{await modCapture(video,file,tc,canvas,offset);}catch(e){errors.push(`${label}: ${modErr(e)}`);}}
+      if(errors.length){shot.error=errors.join(" · ");const n=document.createElement("p");n.className="mod-status error";n.textContent="Some frames could not be extracted: "+shot.error;shot.card.append(n);}
     }
     captured++;mod$("modProgressBar").style.width=Math.round(captured/rows.length*80)+"%";
     mod$("modFrameStatus").textContent=`Capturing the four frames for each shot: ${captured} of ${rows.length}.`;
@@ -158,7 +163,7 @@ async function modBuildFrames(){
   container.replaceChildren(fragment);modState.shots=shots;
   mod$("modFrameStatus").textContent=`All frames captured. Displaying all ${shots.length} shots together; reading BITC suggestions next.`;
   let worker=null;try{worker=await modEnsureOcr();}catch(e){mod$("modFrameStatus").textContent="Frames are ready; OCR could not start. You can enter BITC manually. "+modErr(e);}
-  const ocrShots=shots.filter(x=>x.screener&&!x.error&&x.canvases);
+  const ocrShots=shots.filter(x=>x.screener&&x.canvases);
   if(worker){for(let i=0;i<ocrShots.length;i++){const shot=ocrShots[i];try{[shot.ocrIn,shot.ocrOut]=await Promise.all([modReadBurntInTc(worker,shot.canvases[2]),modReadBurntInTc(worker,shot.canvases[3])]);shot.inputIn.value=shot.ocrIn;shot.inputOut.value=shot.ocrOut;}catch(e){shot.error="OCR: "+modErr(e);}mod$("modProgressBar").style.width=(80+Math.round((i+1)/ocrShots.length*20))+"%";mod$("modFrameStatus").textContent=`Frames are visible. Scanning the top-center and bottom-third BITC regions: ${i+1} of ${ocrShots.length}.`;}}
   else mod$("modProgressBar").style.width="100%";
   mod$("modWriteSecond").disabled=false;
