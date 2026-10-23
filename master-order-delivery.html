@@ -13,7 +13,7 @@
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Delivery <span class="version-tag">1.1</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Delivery <span class="version-tag">1.2</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
@@ -56,11 +56,8 @@
       <div class="field"><label for="modCutFile">Reference cut</label><input class="mod-file-input" id="modCutFile" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v"></div>
       <div class="field"><label for="modScreenerFiles">Raw screener folder</label><input class="mod-file-input" id="modScreenerFiles" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v" multiple webkitdirectory directory></div>
     </div>
-    <div class="mod-cut-options">
-      <div class="field"><label for="modTimelineStart">Cut timeline start TC</label><input id="modTimelineStart" type="text" value="01:00:00:00" inputmode="numeric"></div>
-      <div class="field"><label for="modFps">Timecode frame rate</label><select id="modFps"><option value="24" selected>24 fps</option><option value="23.976">23.976 fps</option><option value="25">25 fps</option><option value="30">30 fps</option></select></div>
-      <p class="mod-note">The default start TC follows your example: cut time 01:00:06:20 seeks to about 00:00:06:20 in a file that starts at 01:00:00:00.</p>
-    </div>
+    <div class="mod-status" id="modMetadataStatus" aria-live="polite">Choose a reference cut to detect its embedded start timecode and frame rate.</div>
+    <div class="mod-cut-options hidden"><div class="field"><label for="modTimelineStart">Detected file start TC</label><input id="modTimelineStart" type="text" value="" readonly></div><div class="field"><label for="modFps">Detected frame rate</label><input id="modFps" type="text" value="" readonly></div></div>
     <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">OCR output is a suggestion for review. Frame comparisons are displayed without automatic mismatch decisions.</span></div>
     <div class="mod-actions"><button class="button primary" id="modBuildFrames">Build Shot Review</button><button class="button secondary" id="modWriteSecond" disabled>Write Reviewed Order Tab to Google Sheet</button></div>
     <div class="mod-progress"><div id="modProgressBar"></div></div><div class="mod-status" id="modFrameStatus" aria-live="polite"></div>
@@ -71,6 +68,6 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.1"></script>
+<script src="master-order-delivery.js?v=1.2"></script>
 </body>
 </html>
