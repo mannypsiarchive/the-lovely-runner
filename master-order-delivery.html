@@ -14,7 +14,7 @@
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.3</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.4</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
@@ -44,10 +44,13 @@
     <div class="mod-source-list" id="modSourceAssignments"></div>
     <div class="mod-status" id="modOutputSummary" aria-live="polite"></div>
     <div class="mod-actions"><button class="button primary" id="modGenerateOrders">Create Per Asset, Fair Use, and Public Domain Tabs</button></div>
+    <p class="mod-note">Sources marked N/A are skipped and do not appear on any generated tab.</p>
     <div class="mod-note mod-help" id="modOrderStatus" aria-live="polite"></div>
     <div class="mod-review-queue" id="modSecondSetup"><h3 class="mod-section-title">Per Second shot reviews</h3><p class="mod-note">Choose the reference cut and raw screener folder once, then build a review for each source assigned Per Second.</p>
       <div class="mod-grid"><div class="field"><label for="modCutFile">Reference cut</label><input class="mod-file-input" id="modCutFile" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v"></div><div class="field"><label for="modScreenerFiles">Raw screener folder</label><input class="mod-file-input" id="modScreenerFiles" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v" multiple webkitdirectory directory></div></div>
       <div class="mod-status" id="modMetadataStatus" aria-live="polite">Choose a reference cut to detect its embedded start timecode and frame rate.</div>
+      <div class="mod-status" id="modScreenerMetadataStatus" aria-live="polite">Choose the raw screener folder to detect each file’s start timecode and frame rate.</div>
+      <details class="mod-metadata-details hidden" id="modScreenerMetadataDetails"><summary>View detected screener metadata</summary><div class="mod-table-wrap" id="modScreenerMetadataList"></div></details>
       <div class="mod-cut-options hidden"><div class="field"><label for="modTimelineStart">Detected file start TC</label><input id="modTimelineStart" type="text" value="" readonly></div><div class="field"><label for="modFps">Detected frame rate</label><input id="modFps" type="text" value="" readonly></div></div>
       <div id="modSecondSources"></div>
     </div>
@@ -56,7 +59,7 @@
   <section class="card mod-card hidden" id="modSecondCard">
     <div class="eyebrow">SHOT REVIEW</div><h2 class="mod-section-title" id="modReviewSourceName">Per Second shot review</h2>
     <p>Screener names should include the ARC number, for example <code>FOR7ARC0753</code>.</p>
-    <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">OCR output is a suggestion for review. Frame comparisons are displayed without automatic mismatch decisions.</span></div>
+    <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">OCR enlarges the top-center and bottom-third overlays. Suggestions remain editable for review.</span></div>
     <div class="mod-actions"><button class="button primary" id="modBuildFrames">Build Shot Review</button><button class="button secondary" id="modWriteSecond" disabled>Write Reviewed Order Tab to Google Sheet</button></div>
     <div class="mod-progress"><div id="modProgressBar"></div></div><div class="mod-status" id="modFrameStatus" aria-live="polite"></div>
     <div id="modShots"></div>
@@ -66,6 +69,6 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.3"></script>
+<script src="master-order-delivery.js?v=1.4"></script>
 </body>
 </html>
