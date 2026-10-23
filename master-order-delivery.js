@@ -168,6 +168,7 @@ function modAttachCutRange(video,row,status){
   video.dataset.rangeStart=String(modCutSeconds(row.timeIn));
   video.dataset.rangeEnd=String(modCutSeconds(row.timeOut));
   video.dataset.rangeFps=String(modState.mediaMetadata.fps);
+  video.tabIndex=0;
   if(Number(video.dataset.rangeEnd)<=Number(video.dataset.rangeStart))throw Error(`Cut OUT ${row.timeOut} must be later than IN ${row.timeIn}.`);
   video.addEventListener("timeupdate",()=>{
     const start=Number(video.dataset.rangeStart),end=Number(video.dataset.rangeEnd),epsilon=1/(Number(video.dataset.rangeFps)||24);
@@ -179,9 +180,9 @@ function modAttachCutRange(video,row,status){
     if(video.currentTime>=end){video.currentTime=start;status.textContent=`Playing ${row.timeIn} to ${row.timeOut} with picture and audio.`;}
   });
 }
-async function modPlayCutRange(video,row,status){
+async function modPlayCutRange(video,row,status,button,placeholder){
   try{
-    status.className="mod-player-status";
+    status.className="mod-player-status";if(button){button.disabled=true;button.textContent="Loading cut range…";}
     if(!modState.cut||!modState.cutObjectUrl)throw Error("Choose the reference cut first.");
     const start=modCutSeconds(row.timeIn),end=modCutSeconds(row.timeOut),fps=modState.mediaMetadata.fps;
     if(end<=start)throw Error(`Cut OUT ${row.timeOut} must be later than IN ${row.timeIn}.`);
@@ -194,10 +195,25 @@ async function modPlayCutRange(video,row,status){
     if(end>video.duration+.05)throw Error(`Cut OUT ${row.timeOut} is beyond the reference cut duration (${video.duration.toFixed(2)} seconds). Check the detected start timecode.`);
     video.muted=false;video.volume=1;
     if(Math.abs(video.currentTime-start)>.002){const seeked=modWaitForMedia(video,"seeked");video.currentTime=start;await seeked;}
+    video.hidden=false;if(placeholder)placeholder.hidden=true;video.focus({preventScroll:true});
     status.textContent=`Starting ${row.timeIn} to ${row.timeOut} with picture and audio…`;
     try{await video.play();status.textContent=`Playing ${row.timeIn} to ${row.timeOut} with picture and audio.`;}
     catch(e){status.textContent=`Ready at ${row.timeIn}. Press Play on the video controls to start picture and audio.`;}
-  }catch(e){status.textContent=modErr(e);status.className="mod-player-status error";}
+  }catch(e){status.textContent=modErr(e);status.className="mod-player-status error";if(button){button.disabled=false;button.textContent="Retry loading cut range";}}
+}
+function modStepCutFrame(event){
+  if(event.key!=="ArrowLeft"&&event.key!=="ArrowRight")return;
+  const video=modState.activeRangeVideo,wrap=video?.closest(".mod-cut-player-wrap");
+  if(!video||video.hidden||!wrap||(!wrap.contains(document.activeElement)&&!wrap.contains(event.target)))return;
+  if(event.target?.matches?.("input,textarea,select,[contenteditable='true']"))return;
+  const fps=Number(video.dataset.rangeFps),start=Number(video.dataset.rangeStart),end=Number(video.dataset.rangeEnd);
+  if(!Number.isFinite(fps)||fps<=0||!Number.isFinite(start)||!Number.isFinite(end))return;
+  event.preventDefault();event.stopPropagation();
+  video.pause();
+  const frame=1/fps,max=Math.max(start,end-frame),delta=event.key==="ArrowRight"?frame:-frame;
+  video.currentTime=Math.max(start,Math.min(max,video.currentTime+delta));
+  const status=wrap.querySelector("[data-player-status]");
+  if(status)status.textContent=`Paused · stepped one frame ${delta>0?"forward":"back"}. Use the arrow keys again to continue frame by frame.`;
 }
 function modOpenFrame(canvas){
   try{const w=window.open();if(w){w.document.write(`<title>Frame review</title><img src="${canvas.toDataURL("image/png")}" style="max-width:100%;height:auto;background:#111">`);w.document.close();}}catch(e){console.warn("Could not open full-size frame",e);}
@@ -222,9 +238,9 @@ async function modBuildFrames(){
     const arc=modExtractArc(row),file=modFindScreener(arc),card=document.createElement("article");card.className="mod-shot";
     const shot={...row,arc,screener:file,ocrIn:"",ocrOut:"",card};
     if(!file){card.innerHTML=`<div class="mod-shot-head"><strong class="mod-shot-title">Shot ${index+1} · ${modEsc(row.filename||arc||"Unidentified clip")}</strong><span class="mod-badge">Screener not matched</span></div><p class="mod-note">No local screener filename matched ${modEsc(arc||"an ARC number")}. This row will stay in the output for review.</p>`;shot.error="No matching screener file";fragment.append(card);return shot;}
-    card.innerHTML=`<div class="mod-shot-head"><strong class="mod-shot-title">Shot ${index+1} · ${modEsc(row.filename||arc)}</strong><div class="mod-toolbar"><span class="mod-badge">${modEsc(row.vendor)}</span><span class="mod-note">${modEsc(file.name)}</span></div></div><section class="mod-cut-player-wrap"><strong>Reference cut · ${modEsc(row.timeIn)} to ${modEsc(row.timeOut)}</strong><video class="mod-cut-player" controls playsinline preload="none" aria-label="Reference cut from ${modEsc(row.timeIn)} to ${modEsc(row.timeOut)}"></video><div class="mod-player-controls"><button class="button secondary" type="button" data-play-range>Play cut range</button><span class="mod-player-status" data-player-status>Press “Play cut range” to play picture and audio from Cut In through Cut Out.</span></div></section><div class="mod-frame-grid">${[["Screener Source In",row.srcIn],["Screener Source Out",row.srcOut]].map((x,i)=>`<div class="mod-frame"><canvas data-frame="${i}"></canvas><label>${x[0]} · ${modEsc(x[1])}</label></div>`).join("")}</div><div class="mod-shot-fields"><div class="field"><label>Burnt-In TC In suggestion</label><input data-ocr="in" placeholder="OCR suggestion or enter manually"></div><div class="field"><label>Burnt-In TC Out suggestion</label><input data-ocr="out" placeholder="OCR suggestion or enter manually"></div></div><div class="mod-note mod-help">Cut: ${modEsc(row.timeIn)} – ${modEsc(row.timeOut)} · Source: ${modEsc(row.srcIn)} – ${modEsc(row.srcOut)}. The reference-cut player uses the browser’s audio and video controls.</div>`;
-    shot.canvases=[...card.querySelectorAll("canvas")];shot.player=card.querySelector(".mod-cut-player");shot.playerStatus=card.querySelector("[data-player-status]");shot.inputIn=card.querySelector('[data-ocr="in"]');shot.inputOut=card.querySelector('[data-ocr="out"]');
-    try{modAttachCutRange(shot.player,row,shot.playerStatus);card.querySelector("[data-play-range]").addEventListener("click",()=>modPlayCutRange(shot.player,row,shot.playerStatus));}catch(e){shot.playerStatus.textContent=modErr(e);shot.playerStatus.className="mod-player-status error";}
+    card.innerHTML=`<div class="mod-shot-head"><strong class="mod-shot-title">Shot ${index+1} · ${modEsc(row.filename||arc)}</strong><div class="mod-toolbar"><span class="mod-badge">${modEsc(row.vendor)}</span><span class="mod-note">${modEsc(file.name)}</span></div></div><section class="mod-cut-player-wrap"><strong>Reference cut · ${modEsc(row.timeIn)} to ${modEsc(row.timeOut)}</strong><div class="mod-player-placeholder" data-player-placeholder><div><p>Load this section of the local reference cut.</p><button class="button secondary" type="button" data-play-range>Load and play cut range</button></div></div><video class="mod-cut-player" controls playsinline preload="none" tabindex="0" hidden aria-label="Reference cut from ${modEsc(row.timeIn)} to ${modEsc(row.timeOut)}"></video><div class="mod-player-controls"><span class="mod-player-status" data-player-status>Video and audio load when you choose the button.</span></div><p class="mod-note mod-help">Click the player, then use ← / → to step backward or forward one frame. Arrow-key stepping pauses playback.</p></section><div class="mod-frame-grid">${[["Screener Source In",row.srcIn],["Screener Source Out",row.srcOut]].map((x,i)=>`<div class="mod-frame"><canvas data-frame="${i}"></canvas><label>${x[0]} · ${modEsc(x[1])}</label></div>`).join("")}</div><div class="mod-shot-fields"><div class="field"><label>Burnt-In TC In suggestion</label><input data-ocr="in" placeholder="OCR suggestion or enter manually"></div><div class="field"><label>Burnt-In TC Out suggestion</label><input data-ocr="out" placeholder="OCR suggestion or enter manually"></div></div><div class="mod-note mod-help">Cut: ${modEsc(row.timeIn)} – ${modEsc(row.timeOut)} · Source: ${modEsc(row.srcIn)} – ${modEsc(row.srcOut)}. The reference-cut player uses the browser’s audio and video controls.</div>`;
+    shot.canvases=[...card.querySelectorAll("canvas")];shot.player=card.querySelector(".mod-cut-player");shot.playerStatus=card.querySelector("[data-player-status]");shot.playerPlaceholder=card.querySelector("[data-player-placeholder]");shot.playButton=card.querySelector("[data-play-range]");shot.inputIn=card.querySelector('[data-ocr="in"]');shot.inputOut=card.querySelector('[data-ocr="out"]');
+    try{modAttachCutRange(shot.player,row,shot.playerStatus);shot.playButton.addEventListener("click",()=>modPlayCutRange(shot.player,row,shot.playerStatus,shot.playButton,shot.playerPlaceholder));}catch(e){shot.playerStatus.textContent=modErr(e);shot.playerStatus.className="mod-player-status error";}
     shot.inputIn.addEventListener("input",()=>shot.ocrIn=shot.inputIn.value);shot.inputOut.addEventListener("input",()=>shot.ocrOut=shot.inputOut.value);
     shot.canvases.forEach(c=>c.addEventListener("click",()=>modOpenFrame(c)));fragment.append(card);return shot;
   });
@@ -255,3 +271,5 @@ mod$("modCutFile").addEventListener("change",()=>{const file=mod$("modCutFile").
 modInitGoogle();
 
 window.addEventListener("pagehide",()=>{if(modState.cutObjectUrl)URL.revokeObjectURL(modState.cutObjectUrl);});
+
+document.addEventListener("keydown",modStepCutFrame,true);

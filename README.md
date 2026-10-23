@@ -1,6 +1,6 @@
 # Master Order Helper 1.10 test
 
-This test replaces the Cut In and Cut Out still images with an inline player for the reference cut. Each player seeks to the EDL Cut In, plays picture and audio, and pauses at Cut Out. Screener Source In and Source Out stills remain for burnt-in timecode review and OCR.
+This test replaces the Cut In and Cut Out still images with an inline player for the reference cut. The player is about 30% smaller on desktop. In each shot, choose **Load and play cut range** in the center of the player area. The player opens the local cut, seeks to the EDL Cut In, plays picture and audio, and pauses at Cut Out. Click the player, then use the left and right arrow keys to step backward or forward one frame; frame stepping pauses playback. Screener Source In and Source Out stills remain for burnt-in timecode review and OCR.
 
 ## Install for a test
 
