@@ -1,4 +1,4 @@
-/* Master Order Helper 1.8 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.9 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -73,31 +73,38 @@ function modVideoLoad(video,file){
     video.pause();
     if(video.dataset.objectUrl)URL.revokeObjectURL(video.dataset.objectUrl);
     video.removeAttribute("src");video.load();
-    video.onloadedmetadata=()=>{video.dataset.fileKey=key;resolve(video.duration);};
+    video.onloadedmetadata=()=>{video.dataset.fileKey=key;delete video.dataset.lastTargetTime;delete video.dataset.lastMediaTime;resolve(video.duration);};
     video.onerror=()=>reject(Error(`Could not read video “${file.name}” in this browser.`));
     video.dataset.objectUrl=URL.createObjectURL(file);video.src=video.dataset.objectUrl;
   });
 }
-function modNextDecodedFrame(video){
-  return new Promise(resolve=>{
-    let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);resolve();};
-    const timer=setTimeout(finish,1500);
-    if(typeof video.requestVideoFrameCallback==="function")video.requestVideoFrameCallback(finish);else setTimeout(finish,180);
+function modNextDecodedFrame(video,targetTime,fps){
+  if(typeof video.requestVideoFrameCallback!=="function")return new Promise(resolve=>setTimeout(resolve,180));
+  return new Promise((resolve,reject)=>{
+    let done=false,callbackId=null;
+    const previousTarget=Number(video.dataset.lastTargetTime),previousMedia=Number(video.dataset.lastMediaTime),hasPrevious=Number.isFinite(previousTarget)&&Number.isFinite(previousMedia),expectedDelta=targetTime-previousTarget;
+    const tolerance=Math.max(.10,2.5/(Number(fps)||24));
+    const cleanup=()=>{clearTimeout(timer);if(callbackId!==null&&typeof video.cancelVideoFrameCallback==="function")video.cancelVideoFrameCallback(callbackId);};
+    const finish=(error,mediaTime)=>{if(done)return;done=true;cleanup();if(error){reject(error);return;}video.dataset.lastTargetTime=String(targetTime);if(Number.isFinite(mediaTime))video.dataset.lastMediaTime=String(mediaTime);resolve(mediaTime);};
+    const timer=setTimeout(()=>finish(Error(`No new frame appeared at ${Number(targetTime).toFixed(2)}s; refusing to reuse the previous screenshot.`)),3000);
+    const onFrame=(_now,metadata)=>{callbackId=null;const mediaTime=Number(metadata?.mediaTime);if(!hasPrevious||!Number.isFinite(mediaTime)||Math.abs((mediaTime-previousMedia)-expectedDelta)<=tolerance){finish(null,mediaTime);return;}callbackId=video.requestVideoFrameCallback(onFrame);};
+    callbackId=video.requestVideoFrameCallback(onFrame);
   });
 }
-async function modSeek(video,time){
+async function modSeek(video,time,fps=24){
   const t=Number(time);
   if(!Number.isFinite(t)||t<0)throw Error("The requested frame is earlier than the cut timeline start. Check the start TC.");
   if(t>video.duration+.05)throw Error(`The requested frame (${t.toFixed(2)}s) is beyond this video’s duration (${video.duration.toFixed(2)}s). Check the cut timeline start TC.`);
   if(Math.abs(video.currentTime-t)>.002){
+    const framePromise=modNextDecodedFrame(video,t,fps).then(value=>({value}),error=>({error}));
     await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{cleanup();reject(Error("Timed out while seeking to the requested timecode."));},10000);
       const cleanup=()=>{clearTimeout(timer);video.removeEventListener("seeked",done);video.removeEventListener("error",bad);};
       const done=()=>{cleanup();resolve();};const bad=()=>{cleanup();reject(Error("Could not seek to the requested timecode."));};
       video.addEventListener("seeked",done,{once:true});video.addEventListener("error",bad,{once:true});video.currentTime=t;
     });
-  }
-  await modNextDecodedFrame(video);
+    const frameResult=await framePromise;if(frameResult.error)throw frameResult.error;
+  }else{video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
 }
 function modTcSeconds(tc,fps=24){
   const p=String(tc||"").replaceAll(";",":").split(":").map(Number);
@@ -110,7 +117,7 @@ async function modCapture(video,file,tc,canvas,offset=0){
   let seconds;
   if(video===mod$("modVideoCut")){if(!modState.mediaMetadata)throw Error("Reference cut metadata has not been detected.");const frames=modParseTcFrames(tc,fps)-modParseTcFrames(modState.mediaMetadata.startTimecode,fps);if(frames<0)throw Error(`EDL time ${tc} is before the reference file start ${modState.mediaMetadata.startTimecode}.`);seconds=frames/fps;}
   else {const metadata=modState.screenerMetadata.get(modScreenerKey(file));if(!metadata)throw Error(`Could not read embedded start timecode and frame rate for screener ${file.name}.`);fps=metadata.fps;const frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);if(frames<0)throw Error(`Source time ${tc} is before screener ${file.name} start ${metadata.startTimecode}.`);seconds=frames/fps-offset;}
-  await modSeek(video,seconds);
+  await modSeek(video,seconds,fps);
   const ctx=canvas.getContext("2d");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
   canvas.dataset.captured="true";
