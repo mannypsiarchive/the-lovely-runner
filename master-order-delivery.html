@@ -14,7 +14,7 @@
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.5</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.6</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
@@ -59,7 +59,7 @@
   <section class="card mod-card hidden" id="modSecondCard">
     <div class="eyebrow">SHOT REVIEW</div><h2 class="mod-section-title" id="modReviewSourceName">Per Second shot review</h2>
     <p>Screener names should include the ARC number, for example <code>FOR7ARC0753</code>.</p>
-    <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">OCR enlarges the top-center and bottom-third overlays. Suggestions remain editable for review.</span></div>
+    <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">PaddleOCR reads enlarged, unthresholded crops from the top-center and bottom-third; Tesseract is the fallback. Suggestions remain editable for review.</span></div>
     <div class="mod-actions"><button class="button primary" id="modBuildFrames">Build Shot Review</button><button class="button secondary" id="modWriteSecond" disabled>Write Reviewed Order Tab to Google Sheet</button></div>
     <div class="mod-progress"><div id="modProgressBar"></div></div><div class="mod-status" id="modFrameStatus" aria-live="polite"></div>
     <div id="modShots"></div>
@@ -69,6 +69,6 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.5"></script>
+<script src="master-order-delivery.js?v=1.6"></script>
 </body>
 </html>
