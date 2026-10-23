@@ -1,6 +1,6 @@
 # Master Order Helper — install package
 
-This is an additive package for the Lovely Runner static site. It adds a home-page card named **Master Order Helper**, which opens the **Master Order Delivery** workflow.
+This is an additive package for the Lovely Runner static site. It adds a home-page card named **Master Order Helper**, which opens the **Master Order Helper** workflow.
 
 ## Install
 
@@ -15,19 +15,19 @@ Replace the repository's `index.html` with the included updated `index.html` (or
 
 The page reuses the Google OAuth web client ID already present in the supplied Lovely Runner source. The OAuth client must allow the published GitHub Pages origin in its authorized JavaScript origins. The page requests the Sheets read/write scope so it can create order tabs in a tracker the user chooses. No client secret is used in browser code.
 
-## What the first version does
+## What this version does
 
 1. Connect to a tracker URL and choose its cost/legal tab and `VENDOR INFO AND RATES` tab.
-2. Review guessed column mappings; select the source, archival flag/type, filename, still/footage, source and timeline timecode, description, and ARC columns.
-3. Keep rows marked Archival or with an ARC-pattern filename; choose a vendor and accept or change the suggested order type. Suggestions read footage rate type from column O and still rate type from column Q.
-4. Create a new Per Asset tab containing unique Original File Names for one vendor, or all per-asset vendors in alphabetical two-column blocks separated by a blank column.
-5. For Per Second, choose the cut and a local folder of raw screeners. Files are matched to rows by ARC number. The page displays cut in/out and screener source in/out frames; OCR can suggest burnt-in timecodes, which remain editable. The reviewed values can be written to a new tracker tab.
+2. Review guessed column mappings; select the source, type, filename, still/footage, source and timeline timecode, description, and ARC columns.
+3. Load the show rows, then assign each source Per Second, Per Asset, Fair Use, Public Domain, or N/A. Per Asset and Per Second suggestions read rate types from the vendor rate tab.
+4. Create one combined Per Asset tab with one column per source group in A, C, E, and subsequent odd columns. Fair Use gets a tab with element/file, source, show in/out, description, and tracker row. Public Domain gets the matching EDL rows.
+5. Choose a reference cut and raw screener folder once. Build a separate Per Second shot review for each source; files match to rows by ARC number. Captured frames and OCR suggestions can be reviewed and written to a separate tracker tab for each source.
 
 ## Notes / current limits
 
 - This is a first installable iteration; the actual Cost Report/Legal Flag workbook was not included in the source ZIP, so column names are guessed from common headers and then confirmed by the user in the UI.
 - Rate type is read from VENDOR INFO AND RATES columns O and Q. Vendor names are detected from a vendor/source header, or column A if no header is found.
-- The per-second tab stores tracker rows, source/cut timecodes, and editable OCR suggestions. The four image frames are shown in the browser for review and are not embedded in Google Sheets. Frames are captured with a reused cut player and a reused screener player, then the full shot list appears together; BITC OCR runs after the frames are displayed. Click a frame to open it full-size. The Google Sheet URL field is wide and white for readability.
+- The per-second review tab stores tracker rows, source/cut timecodes, and editable OCR suggestions. The four image frames are shown in the browser for review and are not embedded in Google Sheets. Frames are captured with a reused cut player and a reused screener player, then the full shot list appears together; BITC OCR runs after the frames are displayed. Click a frame to open it full-size. The Google Sheet URL field is wide and white for readability.
 - The page follows Fair Use Log metadata detection: FFmpeg reads the embedded file start timecode and frame rate, with MediaInfo as a fallback. EDL timecodes are converted to frame counts and the detected file start is subtracted before seeking. For example, a cut that starts at `00:59:50:00` maps EDL time `01:00:06:20` to `00:00:16:20` at 24 fps. If metadata cannot provide both values, frame capture stops instead of guessing. Metadata probing runs in the browser; the selected media is not uploaded. The browser must be able to decode the selected video formats. Some MXF codecs may not play in Chrome; proxy copies in a browser-supported format may be needed.
 - OCR uses Tesseract.js from a CDN and reads the raw screener's sampled source-in/source-out frames. Results need human review. There is no automatic mismatch detection.
-- If column labels are unfamiliar, map them manually before loading archival rows. The row filter uses Type containing “Archival” or an ARC filename pattern (`4–5` prefix characters + `ARC` + digits + underscore).
+- If column labels are unfamiliar, map them manually before loading archival rows. Rows are included when a source and at least one useful file, description, or timecode field are present; every source needs an explicit order type, including N/A, before outputs are created.
