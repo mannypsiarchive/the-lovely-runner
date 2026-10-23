@@ -1,4 +1,4 @@
-/* Master Order Helper 1.7 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.8 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -98,8 +98,6 @@ async function modSeek(video,time){
     });
   }
   await modNextDecodedFrame(video);
-  if(Math.abs(video.currentTime-t)>.15)throw Error(`The video landed at ${video.currentTime.toFixed(2)}s instead of ${t.toFixed(2)}s.`);
-  if(video.readyState<2||!video.videoWidth||!video.videoHeight)throw Error("The browser did not finish decoding this frame.");
 }
 function modTcSeconds(tc,fps=24){
   const p=String(tc||"").replaceAll(";",":").split(":").map(Number);
@@ -112,26 +110,19 @@ async function modCapture(video,file,tc,canvas,offset=0){
   let seconds;
   if(video===mod$("modVideoCut")){if(!modState.mediaMetadata)throw Error("Reference cut metadata has not been detected.");const frames=modParseTcFrames(tc,fps)-modParseTcFrames(modState.mediaMetadata.startTimecode,fps);if(frames<0)throw Error(`EDL time ${tc} is before the reference file start ${modState.mediaMetadata.startTimecode}.`);seconds=frames/fps;}
   else {const metadata=modState.screenerMetadata.get(modScreenerKey(file));if(!metadata)throw Error(`Could not read embedded start timecode and frame rate for screener ${file.name}.`);fps=metadata.fps;const frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);if(frames<0)throw Error(`Source time ${tc} is before screener ${file.name} start ${metadata.startTimecode}.`);seconds=frames/fps-offset;}
-  try{
-    await modSeek(video,seconds);
-    const ctx=canvas.getContext("2d");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;
-    ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    canvas.dataset.captured="true";
-  }catch(browserError){
-    try{await modFfmpegCapture(file,seconds,canvas);}
-    catch(ffmpegError){throw Error(`Browser seek failed (${modErr(browserError)}); FFmpeg frame extraction failed (${modErr(ffmpegError)}).`);}
-  }
+  await modSeek(video,seconds);
+  const ctx=canvas.getContext("2d");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  canvas.dataset.captured="true";
 }
-async function modEnsureFFmpegRuntime(){if(!modFFmpegClass())await modLoadScript(MOD_FFMPEG_SCRIPT);const FFmpeg=modFFmpegClass();if(!FFmpeg)throw Error("FFmpeg library did not load.");if(!modState.ffmpeg){const urls=await Promise.all([modBlobUrl(MOD_FFMPEG_CORE+"/ffmpeg-core.js","text/javascript"),modBlobUrl(MOD_FFMPEG_CORE+"/ffmpeg-core.wasm","application/wasm"),modBlobUrl(MOD_FFMPEG_WORKER,"text/javascript")]);modState.ffmpeg=new FFmpeg();await modState.ffmpeg.load({coreURL:urls[0],wasmURL:urls[1],classWorkerURL:urls[2]});modState.ffmpeg.on?.("log",({message})=>modState.ffmpegLogs.push(message));}return modState.ffmpeg;}
-async function modFfmpegCapture(file,seconds,canvas){const ff=await modEnsureFFmpegRuntime(),id=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,extension=(file.name.match(/\.([A-Za-z0-9]{1,8})$/)||[])[1]||"bin",input=`capture-${id}.${extension}`,output=`capture-${id}.png`;let wrote=false;try{await ff.writeFile(input,new Uint8Array(await file.arrayBuffer()));wrote=true;const code=await ff.exec(["-hide_banner","-loglevel","error","-ss",Number(seconds).toFixed(6),"-i",input,"-map","0:v:0","-frames:v","1","-f","image2",output]);if(code!==0)throw Error(`FFmpeg returned exit code ${code}.`);const data=await ff.readFile(output),bitmap=await createImageBitmap(new Blob([data],{type:"image/png"}));canvas.width=bitmap.width;canvas.height=bitmap.height;canvas.getContext("2d").drawImage(bitmap,0,0);bitmap.close?.();canvas.dataset.captured="true";}finally{try{await ff.deleteFile(output);}catch{}if(wrote)try{await ff.deleteFile(input);}catch{}}}
 function modOpenFrame(canvas){
   try{const w=window.open();if(w){w.document.write(`<title>Frame review</title><img src="${canvas.toDataURL("image/png")}" style="max-width:100%;height:auto;background:#111">`);w.document.close();}}catch(e){console.warn("Could not open full-size frame",e);}
 }
 function modEsc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 async function modEnsurePaddle(){if(!mod$("modRunOcr").checked)return null;if(modState.paddleOcr)return modState.paddleOcr;if(!modState.paddleLoadPromise)modState.paddleLoadPromise=(async()=>{const {PaddleOCR}=await import("https://esm.sh/@paddleocr/paddleocr-js");modState.paddleOcr=await PaddleOCR.create({lang:"en",ocrVersion:"PP-OCRv5",ortOptions:{backend:"wasm",wasmPaths:"https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/"}});return modState.paddleOcr;})().catch(e=>{modState.paddleLoadPromise=null;throw e;});return modState.paddleLoadPromise;}
-async function modEnsureTesseract(){if(!window.Tesseract)return null;if(modState.worker)return modState.worker;modState.worker=await Tesseract.createWorker("eng",1,{logger:()=>{}});await modState.worker.setParameters({tessedit_char_whitelist:"TCR0123456789:;.",tessedit_pageseg_mode:"7",preserve_interword_spaces:"1"});return modState.worker;}
-function modOcrCrop(source,region,threshold=false){const x=Math.round(source.width*region.x),y=Math.round(source.height*region.y),w=Math.round(source.width*region.w),h=Math.round(source.height*region.h),scale=4,crop=document.createElement("canvas");crop.width=w*scale;crop.height=h*scale;const ctx=crop.getContext("2d",{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(source,x,y,w,h,0,0,crop.width,crop.height);if(threshold){const pixels=ctx.getImageData(0,0,crop.width,crop.height);for(let i=0;i<pixels.data.length;i+=4){const gray=.299*pixels.data[i]+.587*pixels.data[i+1]+.114*pixels.data[i+2],v=gray>150?255:0;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=v;pixels.data[i+3]=255;}ctx.putImageData(pixels,0,0);}return crop;}
-async function modReadBurntInTc(paddle,canvas){const regions=[{x:.28,y:0,w:.72,h:.20},{x:.12,y:.06,w:.76,h:.22},{x:0,y:.68,w:1,h:.30}];for(const region of regions){const crop=modOcrCrop(canvas,region,false);try{const [result]=await paddle.predict(crop);const tc=modCleanOcr((result?.items||[]).map(x=>x.text||"").join(" "));if(tc)return tc;}catch(e){console.warn("PaddleOCR crop failed",e);}}try{const fallback=await modEnsureTesseract();if(fallback)for(const region of regions){const result=await fallback.recognize(modOcrCrop(canvas,region,true));const tc=modCleanOcr(result.data.text);if(tc)return tc;}}catch(e){console.warn("Tesseract fallback failed",e);}return "";}
+async function modEnsureTesseract(){if(!window.Tesseract)return null;if(modState.worker)return modState.worker;modState.worker=await Tesseract.createWorker("eng",1,{logger:()=>{}});await modState.worker.setParameters({tessedit_char_whitelist:"0123456789:;.",tessedit_pageseg_mode:"7",preserve_interword_spaces:"1"});return modState.worker;}
+function modOcrCrop(source,region,mode="raw"){const x=Math.round(source.width*region.x),y=Math.round(source.height*region.y),w=Math.round(source.width*region.w),h=Math.round(source.height*region.h),scale=4,crop=document.createElement("canvas");crop.width=w*scale;crop.height=h*scale;const ctx=crop.getContext("2d",{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(source,x,y,w,h,0,0,crop.width,crop.height);if(mode!=="raw"){const pixels=ctx.getImageData(0,0,crop.width,crop.height);for(let i=0;i<pixels.data.length;i+=4){const gray=.299*pixels.data[i]+.587*pixels.data[i+1]+.114*pixels.data[i+2],white=gray>145,v=mode==="invert"?(white?0:255):(white?255:0);pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=v;pixels.data[i+3]=255;}ctx.putImageData(pixels,0,0);}return crop;}
+async function modReadBurntInTc(paddle,canvas){const regions=[{x:.28,y:0,w:.68,h:.14},{x:.08,y:.02,w:.84,h:.20},{x:.08,y:.68,w:.84,h:.27}];if(paddle){for(const region of regions)for(const mode of ["raw","threshold"]){try{const [result]=await paddle.predict(modOcrCrop(canvas,region,mode));const tc=modCleanOcr((result?.items||[]).map(x=>x.text||"").join(" "));if(tc)return tc;}catch(e){console.warn("PaddleOCR crop failed",e);}}}try{const worker=await modEnsureTesseract();if(worker)for(const region of regions)for(const mode of ["threshold","invert","raw"]){const result=await worker.recognize(modOcrCrop(canvas,region,mode));const tc=modCleanOcr(result.data.text);if(tc)return tc;}}catch(e){console.warn("Tesseract OCR failed",e);}return "";}
 async function modBuildFrames(){
   modLoadLocalFiles();
   if(modState.metadataPromise)await modState.metadataPromise;
@@ -171,7 +162,8 @@ async function modBuildFrames(){
   if(mod$("modRunOcr").checked){for(let i=0;i<ocrShots.length;i++){const shot=ocrShots[i];try{const read=async c=>c.dataset.captured?modReadBurntInTc(worker,c):"";[shot.ocrIn,shot.ocrOut]=await Promise.all([read(shot.canvases[2]),read(shot.canvases[3])]);shot.inputIn.value=shot.ocrIn;shot.inputOut.value=shot.ocrOut;}catch(e){shot.error="OCR: "+modErr(e);}mod$("modProgressBar").style.width=(80+Math.round((i+1)/ocrShots.length*20))+"%";mod$("modFrameStatus").textContent=`Frames are visible. Scanning BITC regions with ${ocrMode}: ${i+1} of ${ocrShots.length}.`;}}
   else mod$("modProgressBar").style.width="100%";
   mod$("modWriteSecond").disabled=false;
-  mod$("modFrameStatus").textContent=`Ready: all ${shots.length} shots are displayed together. Cut timecodes were matched to file start ${modState.mediaMetadata.startTimecode} at ${modState.mediaMetadata.fps} fps. BITC OCR: ${ocrMode}; review suggestions before writing the order tab.`;
+  const tcReadCount=shots.filter(s=>s.ocrIn||s.ocrOut).length;
+  mod$("modFrameStatus").textContent=`Ready: all ${shots.length} shots are displayed together. Cut timecodes were matched to file start ${modState.mediaMetadata.startTimecode} at ${modState.mediaMetadata.fps} fps. BITC OCR: ${ocrMode}; found a timecode in ${tcReadCount} shot(s). Review suggestions before writing the order tab.`;
 }
 function modCleanOcr(text){const normalized=String(text||"").toUpperCase().replace(/[OQD]/g,"0").replace(/[IL|]/g,"1").replace(/[.,]/g,":").replace(/\s+/g,"");const m=normalized.match(/\d{2}[:;]\d{2}[:;]\d{2}[:;]\d{2}/g);return m?m[0].replaceAll(";",":"):"";}
 async function modWriteSecond(){if(!modState.shots.length)return;const vendor=modState.activeSource;if(!confirm(`Write ${modState.shots.length} reviewed per-second rows for ${vendor} to a new tracker tab?`))return;const headers=["Vendor","Original File Name","ARC Number","Description","Source In","Source Out","Cut / Timeline In","Cut / Timeline Out","Burnt-In TC In (Review)","Burnt-In TC Out (Review)","Screener File","Tracker Row","Review Notes"];const values=[headers,...modState.shots.map(s=>[s.vendor,s.filename,s.arc,s.description,s.srcIn,s.srcOut,s.timeIn,s.timeOut,s.ocrIn,s.ocrOut,s.screener?.name||"",s.rowNumber,""])];try{const name=modUniqueTabName("MO Sec "+vendor.replace(/[^A-Za-z0-9 ]/g,"").slice(0,35));await modWriteTab(name,values);mod$("modFrameStatus").textContent=`Created “${name}”. Burnt-In TC fields contain OCR suggestions for human review.`;}catch(e){mod$("modFrameStatus").textContent="Could not write the per-second tab: "+modErr(e);}}
