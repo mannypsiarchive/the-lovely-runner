@@ -14,7 +14,7 @@
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.10.2 Test</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.11 Test</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
@@ -48,7 +48,7 @@
     <div class="mod-note mod-help" id="modOrderStatus" aria-live="polite"></div>
     <div class="mod-review-queue" id="modSecondSetup"><h3 class="mod-section-title">Per Second shot reviews</h3><p class="mod-note">Choose the reference cut and raw screener folder once, then build a review for each source assigned Per Second.</p>
       <div class="mod-grid"><div class="field"><label for="modCutFile">Reference cut</label><input class="mod-file-input" id="modCutFile" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v"></div><div class="field"><label for="modScreenerFiles">Raw screener folder</label><input class="mod-file-input" id="modScreenerFiles" type="file" accept="video/*,.mov,.mp4,.mxf,.m4v" multiple webkitdirectory directory></div></div>
-      <p class="mod-note">The reference cut stays on your computer. Each shot’s player starts at Cut In and stops at Cut Out, with the browser’s audio and video controls enabled. Playback depends on the browser supporting the cut’s codec; if it cannot play the file, try an H.264 MP4 proxy.</p>
+      <p class="mod-note">The reference cut stays on your computer. Cut In and Cut Out reference images are captured three frames inside the listed show timecodes to avoid transition frames. Per Second visual review is sorted by show Cut In, then Cut Out. Source frames and OCR remain available for burnt-in timecode review.</p>
       <div class="mod-status" id="modMetadataStatus" aria-live="polite">Choose a reference cut to detect its embedded start timecode and frame rate.</div>
       <div class="mod-status" id="modScreenerMetadataStatus" aria-live="polite">Choose the raw screener folder to detect each file’s start timecode and frame rate.</div>
       <details class="mod-metadata-details hidden" id="modScreenerMetadataDetails"><summary>View detected screener metadata</summary><div class="mod-table-wrap" id="modScreenerMetadataList"></div></details>
@@ -65,11 +65,11 @@
     <div class="mod-progress"><div id="modProgressBar"></div></div><div class="mod-status" id="modFrameStatus" aria-live="polite"></div>
     <div id="modShots"></div>
   </section>
-  <video class="mod-video" id="modVideoSource" muted playsinline></video>
+  <video class="mod-video" id="modVideoCut" muted playsinline></video><video class="mod-video" id="modVideoSource" muted playsinline></video>
 </main>
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.10.2-test"></script>
+<script src="master-order-delivery.js?v=1.11-test"></script>
 </body>
 </html>
