@@ -1,4 +1,4 @@
-/* Master Order Helper 1.6 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.7 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -91,7 +91,8 @@ async function modSeek(video,time){
   if(t>video.duration+.05)throw Error(`The requested frame (${t.toFixed(2)}s) is beyond this video’s duration (${video.duration.toFixed(2)}s). Check the cut timeline start TC.`);
   if(Math.abs(video.currentTime-t)>.002){
     await new Promise((resolve,reject)=>{
-      const cleanup=()=>{video.removeEventListener("seeked",done);video.removeEventListener("error",bad);};
+      const timer=setTimeout(()=>{cleanup();reject(Error("Timed out while seeking to the requested timecode."));},10000);
+      const cleanup=()=>{clearTimeout(timer);video.removeEventListener("seeked",done);video.removeEventListener("error",bad);};
       const done=()=>{cleanup();resolve();};const bad=()=>{cleanup();reject(Error("Could not seek to the requested timecode."));};
       video.addEventListener("seeked",done,{once:true});video.addEventListener("error",bad,{once:true});video.currentTime=t;
     });
@@ -111,11 +112,18 @@ async function modCapture(video,file,tc,canvas,offset=0){
   let seconds;
   if(video===mod$("modVideoCut")){if(!modState.mediaMetadata)throw Error("Reference cut metadata has not been detected.");const frames=modParseTcFrames(tc,fps)-modParseTcFrames(modState.mediaMetadata.startTimecode,fps);if(frames<0)throw Error(`EDL time ${tc} is before the reference file start ${modState.mediaMetadata.startTimecode}.`);seconds=frames/fps;}
   else {const metadata=modState.screenerMetadata.get(modScreenerKey(file));if(!metadata)throw Error(`Could not read embedded start timecode and frame rate for screener ${file.name}.`);fps=metadata.fps;const frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);if(frames<0)throw Error(`Source time ${tc} is before screener ${file.name} start ${metadata.startTimecode}.`);seconds=frames/fps-offset;}
-  await modSeek(video,seconds);
-  const ctx=canvas.getContext("2d");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
-  canvas.dataset.captured="true";
+  try{
+    await modSeek(video,seconds);
+    const ctx=canvas.getContext("2d");canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||360;
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    canvas.dataset.captured="true";
+  }catch(browserError){
+    try{await modFfmpegCapture(file,seconds,canvas);}
+    catch(ffmpegError){throw Error(`Browser seek failed (${modErr(browserError)}); FFmpeg frame extraction failed (${modErr(ffmpegError)}).`);}
+  }
 }
+async function modEnsureFFmpegRuntime(){if(!modFFmpegClass())await modLoadScript(MOD_FFMPEG_SCRIPT);const FFmpeg=modFFmpegClass();if(!FFmpeg)throw Error("FFmpeg library did not load.");if(!modState.ffmpeg){const urls=await Promise.all([modBlobUrl(MOD_FFMPEG_CORE+"/ffmpeg-core.js","text/javascript"),modBlobUrl(MOD_FFMPEG_CORE+"/ffmpeg-core.wasm","application/wasm"),modBlobUrl(MOD_FFMPEG_WORKER,"text/javascript")]);modState.ffmpeg=new FFmpeg();await modState.ffmpeg.load({coreURL:urls[0],wasmURL:urls[1],classWorkerURL:urls[2]});modState.ffmpeg.on?.("log",({message})=>modState.ffmpegLogs.push(message));}return modState.ffmpeg;}
+async function modFfmpegCapture(file,seconds,canvas){const ff=await modEnsureFFmpegRuntime(),id=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,extension=(file.name.match(/\.([A-Za-z0-9]{1,8})$/)||[])[1]||"bin",input=`capture-${id}.${extension}`,output=`capture-${id}.png`;let wrote=false;try{await ff.writeFile(input,new Uint8Array(await file.arrayBuffer()));wrote=true;const code=await ff.exec(["-hide_banner","-loglevel","error","-ss",Number(seconds).toFixed(6),"-i",input,"-map","0:v:0","-frames:v","1","-f","image2",output]);if(code!==0)throw Error(`FFmpeg returned exit code ${code}.`);const data=await ff.readFile(output),bitmap=await createImageBitmap(new Blob([data],{type:"image/png"}));canvas.width=bitmap.width;canvas.height=bitmap.height;canvas.getContext("2d").drawImage(bitmap,0,0);bitmap.close?.();canvas.dataset.captured="true";}finally{try{await ff.deleteFile(output);}catch{}if(wrote)try{await ff.deleteFile(input);}catch{}}}
 function modOpenFrame(canvas){
   try{const w=window.open();if(w){w.document.write(`<title>Frame review</title><img src="${canvas.toDataURL("image/png")}" style="max-width:100%;height:auto;background:#111">`);w.document.close();}}catch(e){console.warn("Could not open full-size frame",e);}
 }
