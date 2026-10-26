@@ -1,5 +1,5 @@
 const FPS = 24;
-const EDL_CLEANER_VERSION = "1.0.7";
+const EDL_CLEANER_VERSION = "1.0.8";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -413,6 +413,14 @@ function classify(reel, originalType) {
   return String(originalType ?? "");
 }
 
+function isFreezeFrameEffect(value) {
+  // Avid may place FREEZE FRAME effect metadata in the clip-name/comment
+  // field instead of a usable source name. Accept common spacing, underscore,
+  // hyphen, and no-separator variations such as FREEZE FRAME, FREEZE_FRAME,
+  // FREEZE-FRAME, and FREEZEFRAME.
+  return /FREEZE[\s_-]*FRAME/i.test(String(value ?? ""));
+}
+
 function repairedClipName(event) {
   const originalReel = removeAvidNewSuffixes(
     String(event?.reel ?? "").trim()
@@ -428,6 +436,19 @@ function repairedClipName(event) {
   clipName = removeAvidNewSuffixes(
     clipName.replace(/^\*\s*(?:FROM|TO)\s+CLIP\s+NAME\s*:?\s*/i, "")
   );
+
+  // When Avid writes FREEZE FRAME effect metadata into the clip-name/comment
+  // field, preserve the authoritative event Reel for recognized archival and
+  // AI-generated sources. This must happen before deletion, classification,
+  // review, or Excel export so the real source name drives all later rules.
+  if (isFreezeFrameEffect(clipName)) {
+    const originalIsArchival = isArchival(originalReel);
+    const originalIsAI = /_AI/i.test(originalReel);
+
+    if (originalReel && (originalIsArchival || originalIsAI)) {
+      return originalReel;
+    }
+  }
 
   // Some Avid exports contain malformed clip-name comments beginning with "=",
   // for example:
