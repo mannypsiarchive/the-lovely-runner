@@ -1,5 +1,5 @@
 const FPS = 24;
-const EDL_CLEANER_VERSION = "1.0.8";
+const EDL_CLEANER_VERSION = "1.0.9";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -154,6 +154,9 @@ function parseEDL(text) {
       ...parsed,
       srcDur: calculateDuration(parsed.srcIn, parsed.srcOut),
       comment: cleanComment(commentLines, parsed.reel),
+      // Preserve whether any Avid metadata line marked this event as a freeze
+      // frame, even if FROM/TO clip-name selection chooses a different comment.
+      freezeFrame: commentLines.some((line) => isFreezeFrameEffect(line)),
     });
 
     i++;
@@ -225,7 +228,6 @@ const DELETE_PATTERNS = [
   /BACKPLATE/i,
   /BACKPLATES/i,
   /GREY[ _-]+BG/i,
-  /(^|[^A-Z0-9])BUG([^A-Z0-9]|$)/i,
   /FLICKER[ _-]+LIGHT/i,
   /FAST[ _-]+LIGHT/i,
   /TEST[ _-]+BAR/i,
@@ -314,8 +316,29 @@ const DELETE_PATTERNS = [
   /BLACK[ _-]+VIDEO/i,
 ];
 
-function shouldDeleteV(reel) {
+function hasBugComponent(reel) {
+  // BUG must be a complete filename component. This still matches BUG,
+  // BUG_OVERLAY, SHOW-BUG, and BUG.MOV, but never matches BUGATTI.
+  return /(^|[^A-Z0-9])BUG([^A-Z0-9]|$)/i.test(String(reel ?? ""));
+}
+
+function shouldDeleteBugOverlay(reel) {
+  if (!hasBugComponent(reel)) return false;
+
+  // Some in-house graphics legitimately use BUG as descriptive wording, such
+  // as GREAT SEAL BUG_V1 or GREAT SEAL BUG_v1a. When the filename also meets
+  // a clear Graphics rule, preserve it so classification can label it Graphics.
+  if (isGraphics(reel)) return false;
+
+  return true;
+}
+
+function shouldDeleteV(reel, freezeFrameProtected = false) {
+  // FREEZE FRAME events always retain their original Reel and must bypass all
+  // automatic delete rules, regardless of the filename's words.
+  if (freezeFrameProtected) return false;
   if (isArchival(reel)) return false;
+  if (shouldDeleteBugOverlay(reel)) return true;
   return DELETE_PATTERNS.some((re) => re.test(String(reel ?? "")));
 }
 
@@ -323,7 +346,11 @@ function removeUnwantedV(rows) {
   let removed = 0;
   const out = [];
   for (const row of rows) {
-    if (String(row[3]).trim().toUpperCase() === "V" && shouldDeleteV(row[1])) {
+    const freezeFrameProtected = Boolean(row[10]);
+    if (
+      String(row[3]).trim().toUpperCase() === "V" &&
+      shouldDeleteV(row[1], freezeFrameProtected)
+    ) {
       removed++;
     } else {
       out.push(row);
@@ -373,7 +400,7 @@ function isTexted(reel) {
 
 function isGraphics(reel) {
   const s = String(reel ?? "").trim();
-  return /GFX/i.test(s) || /THEORY/i.test(s) || /MAP/i.test(s) || /WAVEFORM/i.test(s) || /NEWS[ _-]*HEADLINE/i.test(s) || /(?<![A-Z0-9])V\d+(?![A-Z0-9])/i.test(s);
+  return /GFX/i.test(s) || /THEORY/i.test(s) || /MAP/i.test(s) || /WAVEFORM/i.test(s) || /NEWS[ _-]*HEADLINE/i.test(s) || /(?<![A-Z0-9])V\d+[A-Z]?(?![A-Z0-9])/i.test(s);
 }
 
 function isProduction(reel) {
@@ -437,17 +464,12 @@ function repairedClipName(event) {
     clipName.replace(/^\*\s*(?:FROM|TO)\s+CLIP\s+NAME\s*:?\s*/i, "")
   );
 
-  // When Avid writes FREEZE FRAME effect metadata into the clip-name/comment
-  // field, preserve the authoritative event Reel for recognized archival and
-  // AI-generated sources. This must happen before deletion, classification,
-  // review, or Excel export so the real source name drives all later rules.
-  if (isFreezeFrameEffect(clipName)) {
-    const originalIsArchival = isArchival(originalReel);
-    const originalIsAI = /_AI/i.test(originalReel);
-
-    if (originalReel && (originalIsArchival || originalIsAI)) {
-      return originalReel;
-    }
+  // A FREEZE FRAME note is Avid effect metadata, never the source filename.
+  // For every freeze-frame event, retain the authoritative event Reel before
+  // deletion, classification, review, or Excel export. The hidden event flag
+  // also protects the row from all automatic V-track delete rules.
+  if (event?.freezeFrame || isFreezeFrameEffect(clipName)) {
+    if (originalReel) return originalReel;
   }
 
   // Some Avid exports contain malformed clip-name comments beginning with "=",
@@ -489,6 +511,8 @@ function buildRows(events) {
     e.dstOut,
     e.srcDur,
     "",
+    // Internal-only flag. It is never written to the Excel workbook.
+    Boolean(e.freezeFrame || isFreezeFrameEffect(e.comment)),
   ]);
 }
 
@@ -730,7 +754,7 @@ function skipAllRows() {
 
 function buildWorkbook() {
   const headers = ["Num", "Reel", "Type", "Tracks", "Src In", "Src Out", "Dst In", "Dst Out", "Src Dur", ""];
-  const data = [headers, ...state.rows];
+  const data = [headers, ...state.rows.map((row) => row.slice(0, 10))];
 
   const wb = XLSX.utils.book_new();
   const wsOriginal = XLSX.utils.aoa_to_sheet([
