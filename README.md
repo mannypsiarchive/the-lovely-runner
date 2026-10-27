@@ -1,10 +1,12 @@
-# Master Order Helper 1.13 test
+# Master Order Helper 1.14 test
 
-This build fixes slow/black rows during long shot reviews by attaching the shot list first and capturing images serially as each card nears the viewport. Cards show an explicit loading state. Preview canvases are capped at 960 pixels wide; full-resolution source frames are kept only temporarily while OCR runs. Previews far outside the viewport are released and reloaded when you scroll back. Cut screenshots remain three frames inside the listed boundaries, and all shots remain sorted by show Cut In / Cut Out. Timecode column correction and first-frame BITC fallback from 1.12 are retained.
+For a Per Second source named exactly **A+E Media Resources**, the shot review adds A+E Tape #, Program/Tape Title, and Clip/Shot Description fields. After timecodes are confirmed and the required fields are complete, **Download A+E Order Form** creates a downloadable Excel form matching the attached Hi-Res Clip Order Form layout. Source TC In/Out come from the editable on-screen timecode fields, duration comes from the A+E-only EDL Source Duration column selector, and the Image column uses the screener Source In frame. The Project/Episode line defaults to the connected tracker title and can be edited.
+
+All other Per Second vendors retain the existing review and Google Sheet output. Cut screenshots remain three frames inside the listed boundaries, and the progressive screenshot loading from 1.13 remains.
 
 ## Install for a test
 
-Copy `master-order-delivery.html` and `master-order-delivery.js` into the Lovely Runner site root. The page visibly identifies itself as **1.13 Test**. The reference cut and screeners are read locally by the browser.
+Copy `master-order-delivery.html` and `master-order-delivery.js` into the Lovely Runner site root. The page visibly identifies itself as **1.14 Test**. ExcelJS is loaded from jsDelivr only when the A+E form download is requested.
 
 ## Roll back
 
