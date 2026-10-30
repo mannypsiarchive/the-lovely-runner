@@ -1,0 +1,11 @@
+Master Order Helper 1.17 — root install
+
+The two site files in this ZIP are at the top level.
+
+Replace these files in the same GitHub Pages directory as index.html and style.css:
+- master-order-delivery.html
+- master-order-delivery.js
+
+Do not upload them inside a new subfolder. The home page links to master-order-delivery.html in the site root.
+
+Commit and push both replacements. Then open the site page and hard-refresh. The HTML displays “1.17 Test” and loads master-order-delivery.js?v=1.17-test.
