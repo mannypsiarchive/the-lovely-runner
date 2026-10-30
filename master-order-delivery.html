@@ -11,12 +11,50 @@
     @media(max-width:850px){.mod-map,.mod-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}.mod-frame-grid{grid-template-columns:repeat(2,minmax(220px,1fr))}}@media(max-width:600px){.mod-grid,.mod-grid.three,.mod-map,.mod-frame-grid,.mod-shot-fields,.mod-source-assignment{grid-template-columns:1fr}.mod-cut-player,.mod-player-placeholder{width:100%}.mod-shot-head{display:block}}
     .mod-ae-tape-page{margin:18px 0;padding:18px;border:1px solid rgba(139,156,255,.22);border-radius:16px;background:rgba(103,126,255,.07)}.mod-ae-review-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0;padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(6,10,22,.42)}.mod-ae-review-count{font-weight:700;color:#d9e1f7;margin-right:auto}.mod-ae-click-review .mod-shot{display:none}.mod-ae-click-review .mod-shot.mod-ae-active{display:block}.mod-ae-click-review .mod-frame canvas,.mod-ae-click-review .mod-frame-placeholder{width:80%;margin-left:auto;margin-right:auto}.mod-ae-confirmed{display:inline-block;margin-left:10px;color:#8af0c4;font-size:13px;font-weight:700}.mod-ae-tape-table input{width:100%;min-width:220px;min-height:40px;background:#fff!important;color:#152038!important;border:1px solid #c8d2e4!important;border-radius:8px;padding:8px 10px}.mod-ae-tape-table td{white-space:normal;vertical-align:top}
     .mod-card.mod-ae-review-layout{padding:clamp(12px,2vw,20px);margin-bottom:14px}.mod-ae-click-review .mod-shot{max-width:1180px;margin:10px auto;padding:14px;border-radius:14px;box-shadow:0 6px 16px rgba(0,0,0,.12)}.mod-ae-click-review .mod-shot-head{margin-bottom:10px}.mod-ae-click-review .mod-frame-grid{gap:10px}.mod-ae-click-review .mod-frame{width:80%;box-sizing:border-box;margin:0 auto;padding:8px;border-radius:11px}.mod-ae-click-review .mod-frame canvas,.mod-ae-click-review .mod-frame-placeholder{width:100%;margin-left:auto;margin-right:auto;border-radius:8px}.mod-ae-click-review .mod-shot-fields{gap:10px;margin-top:10px}.mod-ae-click-review .mod-ae-review-controls{gap:8px;margin:10px 0 0;padding:0;border:0;background:none}.mod-ae-click-review .mod-ae-shot-actions{margin-top:10px}.mod-ae-click-review .button{min-height:40px;padding:0 14px;border-radius:10px}.mod-ae-review-count{margin-right:auto}.mod-ae-download-status{flex:1 0 100%;box-sizing:border-box;padding:9px 12px;margin-top:2px}.mod-ae-click-review .mod-frame label{font-size:12px;line-height:1.35}.mod-ae-click-review .mod-shot-title{font-size:15px}@media(max-width:600px){.mod-ae-click-review .mod-shot{padding:12px}.mod-ae-click-review .mod-frame-grid{grid-template-columns:1fr}}
+    /* Compact A+E one-shot review for a typical desktop viewport. */
+    .app-shell:has(#modSecondCard.mod-ae-review-layout){width:min(1600px,calc(100% - 36px))}
+    #modSecondCard.mod-ae-review-layout{padding:10px;margin-bottom:10px;border-radius:18px}
+    #modSecondCard.mod-ae-review-layout>.mod-section-title{margin-bottom:5px;font-size:20px}
+    #modSecondCard.mod-ae-review-layout>p{display:none}
+    #modSecondCard.mod-ae-review-layout .mod-ae-order-setup{gap:8px;margin:7px 0;padding:8px;border-radius:10px}
+    #modSecondCard.mod-ae-review-layout .mod-ae-order-setup .field{margin:0}
+    #modSecondCard.mod-ae-review-layout .mod-ae-order-setup label{margin:0 0 3px;font-size:11px}
+    #modSecondCard.mod-ae-review-layout .mod-ae-order-setup input{min-height:34px;padding:5px 8px;border-radius:7px;font-size:12px}
+    #modSecondCard.mod-ae-review-running>.mod-toolbar,#modSecondCard.mod-ae-review-running>#modBuildFrames{display:none}
+    #modSecondCard.mod-ae-review-running>.mod-actions:has(#modBuildFrames){display:none}
+    #modSecondCard.mod-ae-review-running .mod-progress{margin-top:5px;height:5px}
+    #modSecondCard.mod-ae-review-running>#modFrameStatus{margin-top:5px;padding:5px 8px;font-size:11px;line-height:1.3}
+    .mod-ae-click-review .mod-shot{max-width:1500px;margin:5px auto;padding:8px 10px;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+    .mod-ae-click-review .mod-shot-head{gap:8px;align-items:center;margin:0 2px 5px}
+    .mod-ae-click-review .mod-shot-id{display:flex;flex-direction:column;min-width:150px;line-height:1.12}
+    .mod-ae-click-review .mod-shot-title{font-size:14px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mod-ae-click-review .mod-shot-arc{margin-top:2px;color:#aebce3;font-size:11px;white-space:nowrap}
+    .mod-ae-click-review .mod-shot-badges{display:flex;gap:6px;align-items:center}
+    .mod-ae-click-review .mod-shot-badges .mod-badge{padding:2px 7px;font-size:10px}
+    .mod-ae-click-review .mod-frame-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px}
+    .mod-ae-click-review .mod-frame{width:50%;max-width:400px;box-sizing:border-box;margin:0 auto;padding:4px;border-radius:8px}
+    .mod-ae-click-review .mod-frame canvas,.mod-ae-click-review .mod-frame-placeholder{width:100%;margin:0 auto;border-radius:6px}
+    .mod-ae-click-review .mod-frame label{margin:2px 0 0;font-size:10px;line-height:1.15;white-space:nowrap;text-align:center;overflow:hidden;text-overflow:ellipsis}
+    .mod-ae-click-review .mod-shot-fields.mod-ae-fields{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 8px;margin-top:5px}
+    .mod-ae-click-review .mod-ae-fields .field{min-width:0;margin:0}
+    .mod-ae-click-review .mod-ae-fields label{margin:0 0 2px;font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mod-ae-click-review .mod-ae-fields input{box-sizing:border-box;min-height:32px;padding:4px 7px;border-radius:6px;font-size:12px}
+    .mod-ae-click-review .mod-ae-fields input[readonly]{background:#edf1f7!important}
+    .mod-ae-click-review .mod-help{display:none}
+    .mod-ae-click-review .mod-ae-review-controls{gap:7px;margin:6px 0 0;padding:0;border:0;background:none}
+    .mod-ae-click-review .mod-ae-review-controls .button,.mod-ae-click-review .mod-ae-shot-actions .button{min-height:34px;padding:0 11px;border-radius:8px;font-size:12px}
+    .mod-ae-click-review .mod-ae-review-count{font-size:12px}
+    .mod-ae-click-review .mod-ae-review-controls .mod-note{font-size:11px}
+    .mod-ae-click-review .mod-ae-shot-actions{gap:7px;margin-top:6px}
+    .mod-ae-download-status{flex:1 0 100%;box-sizing:border-box;margin-top:1px;padding:5px 8px;font-size:11px}
+    @media(max-width:1100px){.mod-ae-click-review .mod-frame{width:70%}}
+    @media(max-width:700px){.app-shell:has(#modSecondCard.mod-ae-review-layout){width:min(100% - 20px,920px)}#modSecondCard.mod-ae-review-layout .mod-ae-order-setup{grid-template-columns:1fr}.mod-ae-click-review .mod-frame{width:92%}.mod-ae-click-review .mod-shot-fields.mod-ae-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.mod-ae-click-review .mod-frame label{white-space:normal}}
   </style>
 </head>
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.17 Test</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.18</span></h1><p>Build per-asset orders and review per-second selects against a cut and raw screeners.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
@@ -34,7 +72,7 @@
 
   <section class="card mod-card hidden" id="modMappingCard">
     <div class="eyebrow">STEP 02</div><h2 class="mod-section-title">Confirm the tracker columns</h2>
-    <p>Lovely Runner will guess from the headers. Check the selections before loading show rows.</p>
+    <p>Lovely Runner will guess from the headers. Check the selections before loading show rows. The Source Duration field maps the EDL duration column used in the A+E order form.</p>
     <div class="mod-map" id="modColumnMap"></div>
     <div class="mod-actions"><button class="button primary" id="modLoadRows">Load Show Rows</button></div>
     <div class="mod-status" id="modLoadStatus" aria-live="polite"></div>
@@ -62,7 +100,7 @@
   <section class="card mod-card hidden" id="modSecondCard">
     <div class="eyebrow">SHOT REVIEW</div><h2 class="mod-section-title" id="modReviewSourceName">Per Second shot review</h2>
     <p>Screener names should include the ARC number, for example <code>FOR7ARC0753</code>.</p>
-    <div class="mod-grid mod-ae-order-setup hidden" id="modAeOrderSetup"><div class="field"><label for="modAeProject">A+E Order Form · Project / Episode</label><input id="modAeProject" type="text" placeholder="Project or episode title"></div><div class="field"><label>Client</label><input type="text" value="A+E Factual Studios" readonly></div><div class="field"><label for="modAeDurationColumn">EDL Duration column (auto-detected; review)</label><select id="modAeDurationColumn"></select></div></div>
+    <div class="mod-grid three mod-ae-order-setup hidden" id="modAeOrderSetup"><div class="field"><label for="modAeClient">Client</label><input id="modAeClient" type="text" value="A+E Factual Studios" placeholder="Client name"></div><div class="field"><label for="modAeProject">Project / Episode</label><input id="modAeProject" type="text" placeholder="Project or episode title"></div><div class="field"><label for="modAeOrderDate">Order Date</label><input id="modAeOrderDate" type="date"></div></div>
     <section class="mod-ae-tape-page hidden" id="modAeTapePage"><h3 class="mod-section-title">A+E tape titles</h3><p class="mod-note">Tape IDs are detected from the uploaded elements folder. Enter each Program/Tape Title once; it will fill every matching EDL shot row.</p><div class="mod-table-wrap" id="modAeTapeList"></div><div class="mod-actions"><button class="button primary" id="modAeStartReview">Start one-by-one review</button></div><div class="mod-status" id="modAeTapeStatus" aria-live="polite"></div></section>
     <div class="mod-toolbar"><label class="mod-check"><input id="modRunOcr" type="checkbox" checked> Suggest burnt-in timecodes with OCR</label><span class="mod-note">PaddleOCR reads enlarged, unthresholded crops from the top-center and bottom-third; Tesseract is the fallback. Suggestions remain editable for review.</span></div>
     <div class="mod-actions"><button class="button primary" id="modBuildFrames">Build Shot Review</button><button class="button secondary" id="modWriteSecond" disabled>Write Reviewed Order Tab to Google Sheet</button></div><div class="hidden" id="modAeOrderActionHome"><button class="button secondary hidden" id="modExportAeOrder" disabled>Download A+E Order Form</button><div class="mod-status mod-ae-download-status hidden" id="modAeOrderStatus" aria-live="polite"></div></div>
@@ -75,6 +113,6 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.17-test"></script>
+<script src="master-order-delivery.js?v=1.18-test"></script>
 </body>
 </html>
