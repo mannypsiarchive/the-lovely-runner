@@ -70,7 +70,7 @@
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.20</span></h1><p>Assign sources and prepare orders.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.21</span></h1><p>Assign sources and prepare orders.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
@@ -109,7 +109,7 @@
       <div class="mod-status" id="modScreenerMetadataStatus" aria-live="polite">Choose the raw screener folder to detect each file’s start timecode and frame rate.</div>
       <details class="mod-metadata-details hidden" id="modScreenerMetadataDetails"><summary>View detected screener metadata</summary><div class="mod-table-wrap" id="modScreenerMetadataList"></div></details>
       <div class="mod-cut-options hidden"><div class="field"><label for="modTimelineStart">Detected file start TC</label><input id="modTimelineStart" type="text" value="" readonly></div><div class="field"><label for="modFps">Detected frame rate</label><input id="modFps" type="text" value="" readonly></div></div>
-      <div id="modSecondSources"></div>
+      <div id="modSecondSources"><div class="mod-review-source"><div class="field"><label for="modSecondVendorSelect">Per Second source to review</label><select id="modSecondVendorSelect" aria-label="Per Second source to review"><option value="">Assign a source as Per Second first</option></select></div><button class="button secondary" id="modStartSecondReview" type="button" disabled>Start Shot Review</button></div><p class="mod-note" id="modNextReviewNote" aria-live="polite">Choose one source at a time. Finish the current review before starting another.</p></div>
     </div>
   </section>
 
@@ -130,6 +130,6 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.20"></script>
+<script src="master-order-delivery.js?v=1.21"></script>
 </body>
 </html>
