@@ -70,18 +70,18 @@
 <body>
 <main class="app-shell">
   <header class="hero">
-        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.19</span></h1><p>Assign sources and prepare orders.</p></div>
+        <div><div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div><h1>Master Order Helper <span class="version-tag">1.20</span></h1><p>Assign sources and prepare orders.</p></div>
     <div class="hero-actions"><a class="button ghost back-home" href="index.html">← All tools</a><div class="status-pill" id="modStatusPill">Ready</div></div>
   </header>
 
   <section class="card mod-card">
     <div class="eyebrow">STEP 01</div><h2 class="mod-section-title">Connect the archival tracker</h2>
-    <p>Connect the tracker and choose its cost / legal flag tab.</p>
+    <p>Connect the tracker and choose a sheet tab.</p>
     <div class="field mod-url-field"><label for="modSheetUrl">Google Sheet URL</label><input id="modSheetUrl" type="url" placeholder="Paste the full Google Sheets URL" autocomplete="off"></div>
     <div class="mod-actions"><button class="button primary" id="modConnect" disabled>Connect Google Sheet</button><button class="button secondary" id="modDisconnect" disabled>Disconnect</button></div>
     <div class="mod-status" id="modConnectionStatus" aria-live="polite">Loading Google connection…</div>
     <div class="mod-grid hidden" id="modTabs">
-      <div class="field"><label for="modSourceTab">Cost Report / Legal Flag tab</label><select id="modSourceTab"></select></div>
+      <div class="field"><label for="modSourceTab">Sheet tab</label><select id="modSourceTab"></select></div>
 
     </div>
   </section>
@@ -130,6 +130,6 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="master-order-delivery.js?v=1.19"></script>
+<script src="master-order-delivery.js?v=1.20"></script>
 </body>
 </html>

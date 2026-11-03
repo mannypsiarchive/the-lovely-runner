@@ -1,4 +1,4 @@
-Master Order Helper 1.19
+Master Order Helper 1.20
 
 The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages root (the same folder as index.html and style.css):
 - Replace master-order-delivery.html
@@ -6,4 +6,4 @@ The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages 
 - Keep ae-order-form-template.xlsx in this folder for A+E Media Resources orders
 - Add per-second-order-template.xlsx in this folder for other Per Second orders
 
-Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.19 and loads the script with the 1.19 cache key.
+Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.20 and loads the script with the 1.20 cache key. The tracker tab dropdown lists every sheet tab; vendor-rate data is not read.
