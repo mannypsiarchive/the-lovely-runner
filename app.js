@@ -1,5 +1,5 @@
 const FPS = 24;
-const EDL_CLEANER_VERSION = "1.0.9";
+const EDL_CLEANER_VERSION = "1.0.10";
 
 const REVIEW_CATEGORIES = [
   "Production Shot Footage",
@@ -463,6 +463,19 @@ function repairedClipName(event) {
   clipName = removeAvidNewSuffixes(
     clipName.replace(/^\*\s*(?:FROM|TO)\s+CLIP\s+NAME\s*:?\s*/i, "")
   );
+
+  // ARCHIVAL PRECEDENCE RULE:
+  // Column B is the original event Reel and Column J is the selected Avid
+  // clip-name comment. If exactly one of those values is an archival filename,
+  // the archival value always wins. This happens before every delete, audio,
+  // classification, and Review rule, so a generated effect/subclip name can
+  // never replace or cause the removal of an identifiable archival source.
+  const originalIsArchival = isArchival(originalReel);
+  const commentIsArchival = isArchival(clipName);
+
+  if (originalIsArchival !== commentIsArchival) {
+    return originalIsArchival ? originalReel : clipName;
+  }
 
   // A FREEZE FRAME note is Avid effect metadata, never the source filename.
   // For every freeze-frame event, retain the authoritative event Reel before
