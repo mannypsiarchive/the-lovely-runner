@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Master Archival Logging Helper · The Lovely Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">ARCHIVAL WORKFLOW TOOL</div>
+        <h1>Master Archival Logging Helper <span class="version-tag">1.0</span></h1>
+        <p>Match archival names to downloaded source files and prepare confirmed HIRES renaming.</p>
+      </div>
+      <a class="button ghost back-home" href="index.html">← All tools</a>
+    </header>
+
+    <section class="card logger-card">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 01</div>
+          <h2>Connect Archival EDL Sheet</h2>
+          <p>Connect the Google Sheet containing the archival file names, original file names, and source information.</p>
+        </div>
+        <div class="connection-dot" id="connectionDot"></div>
+      </div>
+
+      <div class="field">
+        <label for="sheetUrl">Google Sheet URL</label>
+        <input id="sheetUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
+      </div>
+      <div class="logger-actions">
+        <button class="button primary" id="connectButton" disabled>Connect Google Sheet</button>
+        <button class="button secondary" id="disconnectButton" disabled>Disconnect</button>
+      </div>
+      <div class="logger-status" id="loggerStatus" aria-live="polite">Enter a Sheet link, then connect your Google account.</div>
+    </section>
+
+    <section class="card logger-card hidden" id="setupCard">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 02</div>
+          <h2>Identify the EDL Columns</h2>
+          <p>Choose the Sheet tab and tell the tool which columns contain each type of information.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="sheetTab">Sheet Tab</label>
+        <select id="sheetTab" disabled></select>
+      </div>
+
+      <div class="master-column-grid">
+        <div class="field">
+          <label for="archivalColumn">Archival File Name Column</label>
+          <select id="archivalColumn" disabled></select>
+        </div>
+        <div class="field">
+          <label for="originalColumn">Original File Name Column</label>
+          <select id="originalColumn" disabled></select>
+        </div>
+        <div class="field">
+          <label for="sourceColumn">Source Column</label>
+          <select id="sourceColumn" disabled></select>
+        </div>
+      </div>
+
+      <div class="master-source-row">
+        <div class="field">
+          <label for="sourceSelect">Choose Source</label>
+          <select id="sourceSelect" disabled><option value="">Choose a source</option></select>
+        </div>
+        <div class="field">
+          <div class="logger-status" id="sheetSummary" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="logger-status" id="setupStatus" aria-live="polite"></div>
+    </section>
+
+    <section class="card logger-card hidden" id="folderCard">
+      <div class="logger-heading">
+        <div>
+          <div class="eyebrow">STEP 03</div>
+          <h2>Connect Unlabeled Archive Folder</h2>
+          <p>Select the desktop folder containing the downloaded source files. The tool will scan the folder root and match the original serial numbers.</p>
+        </div>
+      </div>
+
+      <button class="button secondary" id="chooseFolderButton" type="button">Choose Archive Folder</button>
+      <button class="button ghost reset-button" id="resetFolderButton" type="button">Reset Folder</button>
+      <div class="logger-status" id="folderStatus" aria-live="polite">No archive folder selected.</div>
+      <div class="logger-warning hidden" id="folderWarning" role="alert"></div>
+
+      <div class="master-review hidden" id="reviewPanel"></div>
+      <div class="master-unmatched hidden" id="unmatchedFiles" aria-live="polite"></div>
+      <div class="master-note" id="reviewNote">Choose a source and archive folder to build the review grid.</div>
+      <div class="master-actions">
+        <button class="button primary" id="renameButton" disabled>Rename Confirmed Files</button>
+      </div>
+      <div class="logger-status" id="renameStatus" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client"></script>
+  <script src="master-archival-logging.js"></script>
+</body>
+</html>
