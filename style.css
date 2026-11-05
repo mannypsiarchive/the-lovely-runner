@@ -933,6 +933,85 @@ input:focus, select:focus {
 
 .hidden { display: none !important; }
 
+/* Master Archival Logging Helper */
+.master-column-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.master-source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, .65fr);
+  gap: 14px;
+  align-items: end;
+}
+
+.master-review {
+  margin-top: 22px;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #c7cedf;
+  border-radius: 14px;
+  background: #fff;
+  color: #17203a;
+}
+
+.master-review-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  color: #17203a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.master-review-table th,
+.master-review-table td {
+  padding: 9px 10px;
+  border: 1px solid #c7cedf;
+  text-align: left;
+  vertical-align: top;
+}
+
+.master-review-table th {
+  background: #e9edf7;
+  color: #17203a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.master-review-table td:first-child,
+.master-review-table td:nth-child(6) {
+  text-align: center;
+}
+
+.master-review-table .status-found { color: #147a4b; font-weight: 800; }
+.master-review-table .status-warning { color: #9a6500; font-weight: 800; }
+.master-review-table .status-error { color: #b82f43; font-weight: 800; }
+
+.master-unmatched {
+  margin-top: 16px;
+  color: #9a6500;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.master-note {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.master-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1239,6 +1318,7 @@ input:focus, select:focus {
   .adjustment-row { grid-template-columns: 1fr; }
   .manual-adjustment-range { grid-template-columns: 1fr; }
   .review-change-form { grid-template-columns: 1fr; }
+  .master-column-grid, .master-source-row { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 721px) and (max-width: 980px) {
