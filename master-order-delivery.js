@@ -1,9 +1,9 @@
-/* Master Order Helper 1.28 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.29 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
 const MOD_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-const modState = { id:"", title:"", tabs:[], sourceHeaders:[], sourceRows:[], vendors:[], assignments:new Map(), activeSource:"", tokenClient:null, gapiReady:false, gisReady:false, accessToken:"", mapping:{}, cut:null, cutObjectUrl:"", activeRangeVideo:null, screeners:[], screenerMetadata:new Map(), screenerMetadataPromise:null, shots:[], frameObserver:null, frameCleanupObserver:null, ensureShotFrames:null, releaseShotFrames:null, sourceDurationIndex:-1, exportingAe:false, excelJsPromise:null, worker:null, paddleOcr:null, paddleLoadPromise:null, ffmpeg:null, mediaMetadata:null, metadataPromise:null, ffmpegLogs:[], aeTapeTitles:new Map(), aeReviewMode:false, aeReviewIndex:0, aeOrderBlob:null, aeOrderFileName:"", aeOrderRevision:0, aeOrderPreparedRevision:-1, aeOrderPrepareError:"", aeOrderDeferPrepare:false, generalOrderMode:false, generalReviewStarted:false, generalEditingDetails:false, generalOrderBlob:null, generalOrderFileName:"", generalOrderRevision:0, generalOrderPreparedRevision:-1, generalOrderPrepareError:"", exportingPerSecond:false, generalOrderDeferPrepare:false, activeOrderDownloaded:false, switchingPerSecond:false, sourceSeekProfiles:new Map(), visualStartTcCache:new Map() };
+const modState = { id:"", title:"", tabs:[], sourceHeaders:[], sourceRows:[], vendors:[], assignments:new Map(), activeSource:"", tokenClient:null, gapiReady:false, gisReady:false, accessToken:"", mapping:{}, cut:null, cutObjectUrl:"", activeRangeVideo:null, screeners:[], screenerMetadata:new Map(), screenerMetadataPromise:null, shots:[], frameObserver:null, frameCleanupObserver:null, ensureShotFrames:null, releaseShotFrames:null, sourceDurationIndex:-1, exportingAe:false, excelJsPromise:null, worker:null, paddleOcr:null, paddleLoadPromise:null, ffmpeg:null, mediaMetadata:null, metadataPromise:null, ffmpegLogs:[], aeTapeTitles:new Map(), aeReviewMode:false, aeReviewIndex:0, aeOrderBlob:null, aeOrderFileName:"", aeOrderRevision:0, aeOrderPreparedRevision:-1, aeOrderPrepareError:"", aeOrderDeferPrepare:false, generalOrderMode:false, generalReviewStarted:false, generalEditingDetails:false, generalOrderBlob:null, generalOrderFileName:"", generalOrderRevision:0, generalOrderPreparedRevision:-1, generalOrderPrepareError:"", exportingPerSecond:false, generalOrderDeferPrepare:false, activeOrderDownloaded:false, switchingPerSecond:false, sourceSeekProfiles:new Map(), visualStartTcCache:new Map(), diagnostics:null };
 const mod$ = id => document.getElementById(id);
 const MOD_FIELDS = [
   {key:"vendor",label:"Source / Vendor",aliases:["source","vendor","vendor/source","archive source"]},
@@ -21,6 +21,27 @@ const MOD_FIELDS = [
 ];
 function modStatus(message,kind=""){const el=mod$("modConnectionStatus");if(el){el.textContent=message;el.className="mod-status "+kind;}mod$("modStatusPill").textContent=kind==="error"?"Needs attention":kind==="good"?"Connected":"Ready";}
 function modErr(e){return e?.result?.error?.message||e?.message||String(e);}
+function modDiagReset(){modState.diagnostics={startedAt:new Date().toISOString(),startedClock:performance.now(),events:[],files:new Map(),shotNumber:0};const panel=mod$("modDiagPanel");panel?.classList.remove("hidden");modDiagCurrent("Waiting for frame preparation…");mod$("modDiagRecent")&&(mod$("modDiagRecent").textContent="Timings are recorded locally for this review.");}
+function modDiagFile(file,role="source"){
+  if(!modState.diagnostics||!file)return role==="cut"?"Reference cut":"Screener";
+  const key=`${file.webkitRelativePath||file.name}:${file.size}:${file.lastModified}`,files=modState.diagnostics.files;
+  if(files.has(key))return files.get(key).label;
+  const label=role==="cut"?"Reference cut":`Screener ${[...files.values()].filter(x=>x.role==="source").length+1}`;
+  const ext=String(file.name||"").split(".").pop()?.toLowerCase()||"unknown";
+  files.set(key,{label,role:role==="cut"?"reference-cut":"source",sizeBytes:file.size,extension:ext});return label;
+}
+function modDiagCurrent(message){const el=mod$("modDiagCurrent");if(el)el.textContent=message;}
+function modDiagRecord(stage,details={}){
+  const d=modState.diagnostics;if(!d)return;
+  const safe={elapsedMs:Math.round(performance.now()-d.startedClock),stage,...details};d.events.push(safe);
+  const recent=mod$("modDiagRecent");if(recent){const last=d.events.slice(-3).reverse().map(e=>`${e.stage}: ${Number(e.durationMs||0).toFixed(0)} ms${e.asset?` · ${e.asset}`:""}${e.ok===false?" · failed":""}`).join(" | ");recent.textContent=last;}
+}
+function modDownloadDiagnostics(){
+  const d=modState.diagnostics;if(!d)return;
+  const events=d.events,totals={};for(const event of events){const key=event.stage;const item=totals[key]||(totals[key]={count:0,totalMs:0,maxMs:0,failures:0});item.count++;item.totalMs+=Number(event.durationMs)||0;item.maxMs=Math.max(item.maxMs,Number(event.durationMs)||0);if(event.ok===false)item.failures++;}
+  const report={report:"Master Order Helper local performance diagnostics",version:"1.29",startedAt:d.startedAt,browser:navigator.userAgent,privacy:"No video, screenshots, source filenames, timecodes, spreadsheet values, or Google credentials are included. File labels are anonymized.",files:[...d.files.values()],stageTotals:totals,events};
+  const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="Master Order Helper timing report.json";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);modDiagCurrent("Timing report downloaded. It contains local processing timings and anonymized file labels only.");
+}
 function modCellText(v){if(v==null)return "";if(typeof v==="object")return String(v.text??v.result??"").trim();return String(v).trim();}
 function modTcNorm(v){return modCellText(v).replace(/\s+/g,"").replace(/\./g,":");}
 function modExtractTc(v){return modCellText(v).match(/\d{2}:\d{2}:\d{2}[:;]\d{2}/)?.[0]||"";}
@@ -208,7 +229,7 @@ function modUpdateAeReviewControls(){const controls=mod$("modAeReviewControls"),
 async function modShowAeShot(index){if(!modState.aeReviewMode||!modState.shots.length)return;const nextIndex=Math.max(0,Math.min(modState.shots.length-1,index)),previous=modState.shots[modState.aeReviewIndex];if(previous&&previous!==modState.shots[nextIndex]){previous.nearViewport=false;previous.keepFrames=false;modState.releaseShotFrames?.(previous);}modState.aeReviewIndex=nextIndex;modState.shots.forEach((shot,i)=>shot.card.classList.toggle("mod-ae-active",i===nextIndex));const current=modState.shots[nextIndex];current.card.append(mod$("modAeReviewControls"));current.nearViewport=true;current.keepFrames=true;mod$("modShots").classList.remove("hidden");mod$("modAeTapePage").classList.add("hidden");modUpdateAeReviewControls();mod$("modFrameStatus").textContent=`Preparing shot ${nextIndex+1} of ${modState.shots.length}…`;await modState.ensureShotFrames?.(current);modUpdateAeReviewControls();current.card.scrollIntoView({behavior:"smooth",block:"start"});}
 async function modConfirmAeShot(shot){const issues=modState.generalOrderMode?modGeneralShotIssues(shot):modAeShotIssues(shot);if(issues.length){mod$("modFrameStatus").textContent=`This shot needs attention before confirmation: ${issues.join("; ")}.`;return;}if(!shot.confirmed)modInvalidateAeOrderBlob();shot.confirmed=true;modUpdateAeOrderState();if(modState.aeReviewIndex<modState.shots.length-1)await modShowAeShot(modState.aeReviewIndex+1);else{mod$("modFrameStatus").textContent=modState.generalOrderMode?`All ${modState.shots.length} shots are confirmed. Preparing the Per Second order form…`:`All ${modState.shots.length} shots are confirmed. Preparing the A+E order form…`;modUpdateAeReviewControls();}}
 function modLoadLocalFiles(){const cut=mod$("modCutFile").files[0];modState.cut=cut||null;modState.screeners=[...mod$("modScreenerFiles").files].filter(f=>f.type.startsWith("video/")||/\.(mov|mp4|mxf|m4v|avi|mpg|mpeg|mkv|webm|mts|m2ts)$/i.test(f.name));}
-function modVideoLoad(video,file){
+function modVideoLoadCore(video,file){
   const key=`${file.name}:${file.size}:${file.lastModified}`;
   if(video.dataset.fileKey===key&&video.readyState>=1)return Promise.resolve(video.duration);
   return new Promise((resolve,reject)=>{
@@ -219,6 +240,11 @@ function modVideoLoad(video,file){
     video.onerror=()=>reject(Error(`Could not read video “${file.name}” in this browser.`));
     video.dataset.objectUrl=URL.createObjectURL(file);video.src=video.dataset.objectUrl;
   });
+}
+function modVideoLoad(video,file){
+  const role=video===mod$("modVideoCut")?"cut":"source",asset=modDiagFile(file,role),key=`${file?.name}:${file?.size}:${file?.lastModified}`,reused=video?.dataset.fileKey===key&&video.readyState>=1,started=performance.now();
+  modDiagCurrent(`${reused?"Reusing":"Loading"} ${asset} in the browser…`);
+  return modVideoLoadCore(video,file).then(duration=>{modDiagRecord("video-load",{asset,role,reused,durationMs:Math.round(performance.now()-started),durationSeconds:Number.isFinite(duration)?Number(duration.toFixed(2)):null,ok:true});return duration;},error=>{modDiagRecord("video-load",{asset,role,reused,durationMs:Math.round(performance.now()-started),ok:false});throw error;});
 }
 function modNextDecodedFrame(video,targetTime,fps){
   if(typeof video.requestVideoFrameCallback!=="function")return{promise:new Promise(resolve=>setTimeout(()=>resolve(video.currentTime),180)),cancel:()=>{}};
@@ -237,7 +263,7 @@ function modNextDecodedFrame(video,targetTime,fps){
 }
 function modWaitForPaint(){return new Promise(resolve=>{if(typeof requestAnimationFrame!=="function"){setTimeout(resolve,40);return;}requestAnimationFrame(()=>requestAnimationFrame(resolve));});}
 function modSeekedFrameIsReady(video,targetTime,fps){return !video.seeking&&video.readyState>=2&&Math.abs(video.currentTime-targetTime)<=Math.max(.10,1.5/(Number(fps)||24));}
-async function modSeek(video,time,fps=24){
+async function modSeekCore(video,time,fps=24){
   const t=Number(time);
   if(!Number.isFinite(t)||t<0)throw Error("The requested frame is earlier than the cut timeline start. Check the start TC.");
   if(t>video.duration+.05)throw Error(`The requested frame (${t.toFixed(2)}s) is beyond this video’s duration (${video.duration.toFixed(2)}s). Check the cut timeline start TC.`);
@@ -274,12 +300,18 @@ async function modSeek(video,time,fps=24){
     }else{video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
   }else{video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
 }
+async function modSeek(video,time,fps=24){
+  const role=video===mod$("modVideoCut")?"cut":"source",asset=role==="cut"?"Reference cut":(modState.diagnostics?.activeSourceLabel||"Screener"),started=performance.now();
+  modDiagCurrent(`Seeking ${asset} to ${Number(time).toFixed(2)} seconds…`);
+  try{await modSeekCore(video,time,fps);modDiagRecord("seek",{asset,role,durationMs:Math.round(performance.now()-started),ok:true});}
+  catch(error){modDiagRecord("seek",{asset,role,durationMs:Math.round(performance.now()-started),ok:false});throw error;}
+}
 function modTcSeconds(tc,fps=24){
   const p=String(tc||"").replaceAll(";",":").split(":").map(Number);
   if(p.length<3||p.some(Number.isNaN))throw Error(`Invalid timecode “${tc}”. Use HH:MM:SS:FF.`);
   return p.slice(0,3).reduce((n,x)=>n*60+x,0)+(p[3]||0)/fps;
 }
-async function modCapture(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=false,deferOcr=false,secondsOverride=null){
+async function modCaptureCore(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=false,deferOcr=false,secondsOverride=null){
   if(!file)return "";await modVideoLoad(video,file);
   let fps,seconds;
   if(video===mod$("modVideoCut")){
@@ -324,6 +356,13 @@ async function modCapture(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=f
     const placeholder=canvas.parentElement?.querySelector(".mod-frame-placeholder");if(placeholder)placeholder.hidden=true;
   }finally{if(full&&!ocrPromise){full.width=1;full.height=1;}}
   return deferOcr&&ocrPromise?{ocrPromise}:ocr;
+}
+async function modCapture(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=false,deferOcr=false,secondsOverride=null){
+  const role=video===mod$("modVideoCut")?"cut":"source",asset=modDiagFile(file,role),started=performance.now();
+  if(modState.diagnostics&&role==="source")modState.diagnostics.activeSourceLabel=asset;
+  modDiagCurrent(`Preparing ${role==="cut"?"show":"source"} frame from ${asset}…`);
+  try{const result=await modCaptureCore(video,file,tc,canvas,offset,ocrEngine,readOcr,deferOcr,secondsOverride);modDiagRecord("frame-capture",{asset,role,durationMs:Math.round(performance.now()-started),width:canvas?.width||0,height:canvas?.height||0,ok:true});modDiagCurrent(`Captured ${role==="cut"?"show":"source"} frame from ${asset}.`);return result;}
+  catch(error){modDiagRecord("frame-capture",{asset,role,durationMs:Math.round(performance.now()-started),ok:false});modDiagCurrent(`Frame capture failed for ${asset}; see the shot warning and timing report.`);throw error;}
 }
 function modCutSeconds(tc){
   const metadata=modState.mediaMetadata;
@@ -437,9 +476,14 @@ function modEsc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":
 async function modEnsurePaddle(){if(!mod$("modRunOcr").checked)return null;if(modState.paddleOcr)return modState.paddleOcr;if(!modState.paddleLoadPromise)modState.paddleLoadPromise=(async()=>{const {PaddleOCR}=await import("https://esm.sh/@paddleocr/paddleocr-js");modState.paddleOcr=await PaddleOCR.create({lang:"en",ocrVersion:"PP-OCRv5",ortOptions:{backend:"wasm",wasmPaths:"https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/"}});return modState.paddleOcr;})().catch(e=>{modState.paddleLoadPromise=null;throw e;});return modState.paddleLoadPromise;}
 async function modEnsureTesseract(){if(!window.Tesseract)return null;if(modState.worker)return modState.worker;modState.worker=await Tesseract.createWorker("eng",1,{logger:()=>{}});await modState.worker.setParameters({tessedit_char_whitelist:"0123456789:;.",tessedit_pageseg_mode:"7",preserve_interword_spaces:"1"});return modState.worker;}
 function modOcrCrop(source,region,mode="raw"){const x=Math.round(source.width*region.x),y=Math.round(source.height*region.y),w=Math.round(source.width*region.w),h=Math.round(source.height*region.h),scale=4,crop=document.createElement("canvas");crop.width=w*scale;crop.height=h*scale;const ctx=crop.getContext("2d",{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(source,x,y,w,h,0,0,crop.width,crop.height);if(mode!=="raw"){const pixels=ctx.getImageData(0,0,crop.width,crop.height);for(let i=0;i<pixels.data.length;i+=4){const gray=.299*pixels.data[i]+.587*pixels.data[i+1]+.114*pixels.data[i+2],white=gray>145,v=mode==="invert"?(white?0:255):(white?255:0);pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=v;pixels.data[i+3]=255;}ctx.putImageData(pixels,0,0);}return crop;}
-async function modReadBurntInTc(paddle,canvas){const regions=[{x:.28,y:0,w:.68,h:.14},{x:.08,y:.02,w:.84,h:.20},{x:.08,y:.68,w:.84,h:.27}];if(paddle){for(const region of regions)for(const mode of ["raw","threshold"]){try{const [result]=await paddle.predict(modOcrCrop(canvas,region,mode));const tc=modCleanOcr((result?.items||[]).map(x=>x.text||"").join(" "));if(tc)return tc;}catch(e){console.warn("PaddleOCR crop failed",e);}}}try{const worker=await modEnsureTesseract();if(worker)for(const region of regions)for(const mode of ["threshold","invert","raw"]){const result=await worker.recognize(modOcrCrop(canvas,region,mode));const tc=modCleanOcr(result.data.text);if(tc)return tc;}}catch(e){console.warn("Tesseract OCR failed",e);}return "";}
+async function modReadBurntInTcCore(paddle,canvas){const regions=[{x:.28,y:0,w:.68,h:.14},{x:.08,y:.02,w:.84,h:.20},{x:.08,y:.68,w:.84,h:.27}];if(paddle){for(const region of regions)for(const mode of ["raw","threshold"]){try{const [result]=await paddle.predict(modOcrCrop(canvas,region,mode));const tc=modCleanOcr((result?.items||[]).map(x=>x.text||"").join(" "));if(tc)return tc;}catch(e){console.warn("PaddleOCR crop failed",e);}}}try{const worker=await modEnsureTesseract();if(worker)for(const region of regions)for(const mode of ["threshold","invert","raw"]){const result=await worker.recognize(modOcrCrop(canvas,region,mode));const tc=modCleanOcr(result.data.text);if(tc)return tc;}}catch(e){console.warn("Tesseract OCR failed",e);}return "";}
+async function modReadBurntInTc(paddle,canvas){
+  const started=performance.now();modDiagCurrent("Reading a frame with OCR…");
+  try{const result=await modReadBurntInTcCore(paddle,canvas);modDiagRecord("ocr",{durationMs:Math.round(performance.now()-started),ok:true,recognized:!!result});return result;}
+  catch(error){modDiagRecord("ocr",{durationMs:Math.round(performance.now()-started),ok:false});throw error;}
+}
 async function modBuildFrames(){
-  const requiredIds=["modSecondCard","modShots","modAeReviewControls","modAeOrderSetup","modPerSecondOrderSetup","modAeTapePage","modExportAeOrder","modAeOrderStatus","modExportPerSecondOrder","modPerSecondOrderStatus","modFrameStatus","modProgressBar","modRunOcr"];const missingIds=requiredIds.filter(id=>!mod$(id));if(missingIds.length)throw Error(`Page files are out of sync. Replace both master-order-delivery.html and master-order-delivery.js (missing: ${missingIds.join(", ")}).`);
+  const requiredIds=["modSecondCard","modShots","modAeReviewControls","modAeOrderSetup","modPerSecondOrderSetup","modAeTapePage","modExportAeOrder","modAeOrderStatus","modExportPerSecondOrder","modPerSecondOrderStatus","modFrameStatus","modProgressBar","modRunOcr","modDiagPanel","modDiagCurrent","modDiagRecent","modDownloadDiagnostics"];const missingIds=requiredIds.filter(id=>!mod$(id));if(missingIds.length)throw Error(`Page files are out of sync. Replace both master-order-delivery.html and master-order-delivery.js (missing: ${missingIds.join(", ")}).`);
   if(modState.exportingAe||modState.exportingPerSecond)return;
   modLoadLocalFiles();
   if(modState.metadataPromise)await modState.metadataPromise;
@@ -447,6 +491,7 @@ async function modBuildFrames(){
   if(!modState.cut)return alert("Choose the reference cut first.");
   if(!modState.mediaMetadata)return alert("Wait for the reference cut's start timecode and frame rate to be detected before building the shot review.");
   if(!modState.screeners.length)return alert("Choose the raw screener folder.");
+  modDiagReset();
   const isAeVendor=modIsAEMediaResources(modState.activeSource),isGenericVendor=modState.generalOrderMode&&!isAeVendor,isClickReview=isAeVendor||isGenericVendor;modInvalidateAeOrderBlob();modState.aeOrderPrepareError="";modState.generalOrderPrepareError="";mod$("modAeOrderActionHome").append(mod$("modExportAeOrder"),mod$("modAeOrderStatus"));mod$("modPerSecondOrderActionHome").append(mod$("modExportPerSecondOrder"),mod$("modPerSecondOrderStatus"));mod$("modSecondCard").append(mod$("modAeReviewControls"));mod$("modSecondCard").classList.toggle("mod-ae-review-layout",isClickReview);mod$("modExportAeOrder").classList.add("hidden");mod$("modAeOrderStatus").classList.add("hidden");mod$("modExportPerSecondOrder").classList.add("hidden");mod$("modPerSecondOrderStatus").classList.add("hidden");mod$("modAeOrderSetup").classList.toggle("hidden",!isAeVendor);mod$("modPerSecondOrderSetup").classList.add("hidden");mod$("modWriteSecond").classList.add("hidden");mod$("modAeTapePage").classList.add("hidden");mod$("modAeReviewControls").classList.add("hidden");if(isAeVendor&&!String(mod$("modAeProject").value||"").trim())mod$("modAeProject").value=modState.title||"";mod$("modSecondCard").classList.toggle("mod-ae-review-running",isClickReview);
   await modAlignReferenceCutStart();
   const fps=modState.mediaMetadata.fps;
@@ -480,11 +525,12 @@ async function modBuildFrames(){
   let completed=shots.filter(s=>s.processedOnce).length,running=false;const queue=[];let worker=null,ocrMode=mod$("modRunOcr").checked?"PaddleOCR":"off";
   const update=()=>{mod$("modProgressBar").style.width=Math.round(completed/shots.length*100)+"%";if(isClickReview){mod$("modFrameStatus").textContent=`Frames ready: ${completed} of ${shots.length}. Review one shot at a time. OCR: ${ocrMode}.`;if(completed===shots.length){mod$("modBuildFrames").disabled=false;mod$("modFrameStatus").textContent=`All ${shots.length} shots are ready for one-by-one review.`;}}else{mod$("modFrameStatus").textContent=`Frames ready: ${completed} of ${shots.length}. Previews load near the viewport and release offscreen. OCR: ${ocrMode}.`;if(completed===shots.length){mod$("modWriteSecond").disabled=false;mod$("modBuildFrames").disabled=false;mod$("modFrameStatus").textContent=`All ${shots.length} shots are ready in show order.`;}}};
   const captureShot=async shot=>{
+    const shotStarted=performance.now();if(modState.diagnostics)modState.diagnostics.shotNumber++;const shotNumber=modState.diagnostics?.shotNumber||0;
     shot.sourceOutFallback=false;if(shot.sourceOutFallbackNode){shot.sourceOutFallbackNode.remove();shot.sourceOutFallbackNode=null;}
     shot.processing=true;shot.canvases.forEach(c=>{const ph=c.parentElement?.querySelector(".mod-frame-placeholder");if(ph&&!c.dataset.captured)ph.textContent="Loading frame…";});
     const errors=[],wantsOcr=mod$("modRunOcr").checked&&shot.screener&&!shot.ocrDone,pendingOcr=[];
     let workerPromise=Promise.resolve(worker);
-    if(wantsOcr&&!worker){mod$("modFrameStatus").textContent="Loading OCR while screenshots are captured…";workerPromise=modEnsurePaddle().then(engine=>{worker=engine;return engine;}).catch(e=>{ocrMode="Tesseract fallback";console.warn("PaddleOCR could not start; using Tesseract",e);return null;});}
+    if(wantsOcr&&!worker){mod$("modFrameStatus").textContent="Loading OCR while screenshots are captured…";const ocrLoadStarted=performance.now();modDiagCurrent("Loading the OCR model in the background…");workerPromise=modEnsurePaddle().then(engine=>{worker=engine;modDiagRecord("ocr-engine-load",{durationMs:Math.round(performance.now()-ocrLoadStarted),ok:true});return engine;}).catch(e=>{ocrMode="Tesseract fallback";modDiagRecord("ocr-engine-load",{durationMs:Math.round(performance.now()-ocrLoadStarted),ok:false});console.warn("PaddleOCR could not start; using Tesseract",e);return null;});}
     const cutRequests=[[shot.timeIn,shot.canvases[0],3,"Cut In"],[shot.timeOut,shot.canvases[1],-3,"Cut Out"]];
     for(const [tc,canvas,frames,label] of cutRequests){try{await modCapture(mod$("modVideoCut"),modState.cut,tc,canvas,frames);}catch(e){errors.push(`${label}: ${modErr(e)}`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);}}
     if(shot.screener){
@@ -509,6 +555,7 @@ async function modBuildFrames(){
     if(shot.screener){const sourceMeta=modState.screenerMetadata.get(modScreenerKey(shot.screener)),fallbackTcs=sourceMeta?.clipRelativeTcs||[],usedForShot=[shot.srcIn,shot.srcOut].filter(tc=>fallbackTcs.includes(String(tc)));if(usedForShot.length&&!shot.alignmentNode){shot.alignmentNode=document.createElement("p");shot.alignmentNode.className="mod-note mod-help";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.alignmentNode);else shot.card.prepend(shot.alignmentNode);}if(usedForShot.length)shot.alignmentNode.textContent=`Timecode alignment check: the file metadata starts at ${sourceMeta.startTimecode}, but the EDL source TC is ${usedForShot.join(" and ")}. These frames were captured from clip-relative positions; verify them visually.`;}
     if(modLooksLikeTc(shot.srcIn)&&modLooksLikeTc(shot.srcOut)&&shot.screener){try{const sourceFps=modState.screenerMetadata.get(modScreenerKey(shot.screener))?.fps||fps;if(modParseTcFrames(shot.srcOut,sourceFps)<modParseTcFrames(shot.srcIn,sourceFps))errors.push("Source Out precedes Source In; verify the source-timecode columns.");}catch{}}
     shot.error=errors.join(" · ");if(errors.length){if(!shot.warningNode){shot.warningNode=document.createElement("p");shot.warningNode.className="mod-status error mod-shot-warning";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.warningNode);else shot.card.prepend(shot.warningNode);}shot.warningNode.textContent="Review this row: "+shot.error;}else if(shot.warningNode){shot.warningNode.remove();shot.warningNode=null;}
+    modDiagRecord("shot-preparation",{shotNumber,durationMs:Math.round(performance.now()-shotStarted),ok:errors.length===0,sourceFound:!!shot.screener});
     shot.processing=false;shot.framesReady=true;if(!shot.processedOnce){shot.processedOnce=true;completed++;}if(!shot.nearViewport&&!shot.cleanupNear&&!shot.keepFrames){shot.canvases.forEach(c=>modSetFramePlaceholder(c,"Preview released to save memory · scroll back to reload"));shot.framesReady=false;}update();modUpdateAeOrderState();
   };
   const settleShot=shot=>{const waiters=shot.frameWaiters||[];shot.frameWaiters=[];waiters.forEach(resolve=>resolve());};
@@ -526,7 +573,7 @@ async function modEnsureExcelJs(){if(window.ExcelJS?.Workbook)return window.Exce
 function modImageJpeg(canvas){const maxWidth=640,scale=Math.min(1,maxWidth/(canvas.width||1)),temp=document.createElement("canvas");temp.width=Math.max(1,Math.round((canvas.width||640)*scale));temp.height=Math.max(1,Math.round((canvas.height||360)*scale));temp.getContext("2d").drawImage(canvas,0,0,temp.width,temp.height);const data=temp.toDataURL("image/jpeg",.88);temp.width=1;temp.height=1;return data;}
 function modAeSortedShots(){const fps=modState.mediaMetadata?.fps||24;return [...modState.shots].filter(s=>s.confirmed).sort((a,b)=>String(a.aeTapeNumber).localeCompare(String(b.aeTapeNumber),undefined,{numeric:true,sensitivity:"base"})||String(a.aeProgramTitle).localeCompare(String(b.aeProgramTitle),undefined,{numeric:true,sensitivity:"base"})||(modTcFramesSafe(a.ocrIn,fps)-modTcFramesSafe(b.ocrIn,fps))||(a.rowNumber||0)-(b.rowNumber||0));}
 function modTcFramesSafe(tc,fps){try{return modParseTcFrames(tc,fps);}catch{return Number.MAX_SAFE_INTEGER;}}
-async function modCreateAeOrderBlob(revision){
+async function modCreateAeOrderBlobCore(revision){
   const status=mod$("modAeOrderStatus");status.textContent="Loading the formatted A+E order form…";
   const [ExcelJS,response]=await Promise.all([modEnsureExcelJs(),fetch(new URL("ae-order-form-template.xlsx?v=1.26",document.baseURI))]);
   if(!response.ok)throw Error(`Could not load the A+E form template (HTTP ${response.status}).`);
@@ -558,9 +605,14 @@ async function modCreateAeOrderBlob(revision){
   const buffer=await workbook.xlsx.writeBuffer(),blob=new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),slug=String(mod$("modAeProject").value||"A+E Order").replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-|-$/g,"");
   return{blob,fileName:`A+E Media Resources Order - ${slug||"Order"}.xlsx`,shotCount:shots.length};
 }
+async function modCreateAeOrderBlob(revision){
+  const started=performance.now();modDiagCurrent("Preparing the A+E Excel form and embedding reviewed images…");
+  try{const result=await modCreateAeOrderBlobCore(revision);modDiagRecord("workbook-build",{orderType:"A+E",durationMs:Math.round(performance.now()-started),shotCount:result.shotCount,ok:true});return result;}
+  catch(error){modDiagRecord("workbook-build",{orderType:"A+E",durationMs:Math.round(performance.now()-started),ok:false});throw error;}
+}
 function modGeneralHeaderIssues(){const issues=[];if(!String(mod$("modOrderSeries").value||"").trim())issues.push("Series");if(!String(mod$("modOrderEpisode").value||"").trim())issues.push("Episode Number");if(!String(mod$("modOrderLicensee").value||"").trim())issues.push("Licensee LLC");if(!String(mod$("modOrderDate").value||"").trim())issues.push("Date");return issues;}
 function modStartPerSecondReview(){const required=["modPerSecondOrderSetupStatus","modPerSecondOrderSetup","modPerSecondStartReview","modShots","modAeReviewControls","modFrameStatus"];const missingPageIds=required.filter(id=>!mod$(id));if(missingPageIds.length){const target=mod$("modPerSecondOrderSetupStatus");if(target){target.className="mod-status error";target.textContent=`Page files are out of sync. Replace both master-order-delivery.html and master-order-delivery.js (missing: ${missingPageIds.join(", ")}).`;}return;}const status=mod$("modPerSecondOrderSetupStatus");const missing=modGeneralHeaderIssues();if(missing.length){status.className="mod-status error";status.textContent=`Fill in ${missing.join(", ")}.`;return;}status.className="mod-status hidden";if(modState.generalReviewStarted&&modState.shots.length){modState.generalEditingDetails=false;mod$("modPerSecondOrderSetup").classList.add("hidden");mod$("modShots").classList.remove("hidden");mod$("modAeReviewControls").classList.remove("hidden");void modShowAeShot(modState.aeReviewIndex);return;}modState.generalEditingDetails=false;mod$("modPerSecondStartReview").disabled=true;mod$("modPerSecondStartReview").textContent="Preparing…";mod$("modPerSecondOrderSetup").classList.add("hidden");void modBuildFrames().catch(e=>{status.className="mod-status error";status.textContent=modErr(e);}).finally(()=>{mod$("modPerSecondStartReview").disabled=false;mod$("modPerSecondStartReview").textContent=modState.generalReviewStarted?"Return to Shot Review":"Start Shot Review";if(!modState.generalReviewStarted&&modState.generalOrderMode)mod$("modPerSecondOrderSetup").classList.remove("hidden");});}
-async function modCreatePerSecondOrderBlob(revision){
+async function modCreatePerSecondOrderBlobCore(revision){
   const status=mod$("modPerSecondOrderStatus");status.textContent="Loading the formatted order form…";
   const [ExcelJS,response]=await Promise.all([modEnsureExcelJs(),fetch(new URL("per-second-order-template.xlsx?v=1.26",document.baseURI))]);
   if(!response.ok)throw Error(`Could not load the Per Second form template (HTTP ${response.status}).`);
@@ -586,6 +638,11 @@ async function modCreatePerSecondOrderBlob(revision){
   }
   status.textContent="Assembling the formatted Excel order form…";const buffer=await workbook.xlsx.writeBuffer(),blob=new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),base=`${mod$("modOrderSeries").value||"Per Second Order"} Ep ${mod$("modOrderEpisode").value||""}`.replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-|-$/g,"");return{blob,fileName:`Per Second Order - ${base||"Order"}.xlsx`,shotCount:shots.length};
 }
+async function modCreatePerSecondOrderBlob(revision){
+  const started=performance.now();modDiagCurrent("Preparing the Per Second Excel form and embedding reviewed images…");
+  try{const result=await modCreatePerSecondOrderBlobCore(revision);modDiagRecord("workbook-build",{orderType:"Per Second",durationMs:Math.round(performance.now()-started),shotCount:result.shotCount,ok:true});return result;}
+  catch(error){modDiagRecord("workbook-build",{orderType:"Per Second",durationMs:Math.round(performance.now()-started),ok:false});throw error;}
+}
 async function modPreparePerSecondOrderForm(){if(!modState.generalOrderMode||modState.exportingPerSecond)return;const issues=modGeneralOrderIssues();if(issues.length){modUpdatePerSecondOrderState();return;}const revision=modState.generalOrderRevision;modState.exportingPerSecond=true;modState.generalOrderPrepareError="";modUpdatePerSecondOrderState();try{const prepared=await modCreatePerSecondOrderBlob(revision);if(revision!==modState.generalOrderRevision||modState.shots.some(shot=>!shot.confirmed))return;modState.generalOrderBlob=prepared.blob;modState.generalOrderFileName=prepared.fileName;modState.generalOrderPreparedRevision=revision;}catch(e){if(revision===modState.generalOrderRevision)modState.generalOrderPrepareError=modErr(e);}finally{modState.exportingPerSecond=false;modUpdatePerSecondOrderState();}}
 function modExportPerSecondOrderForm(){if(!modState.generalOrderMode)return;if(!modState.generalOrderBlob||modState.generalOrderPreparedRevision!==modState.generalOrderRevision){if(!modState.exportingPerSecond){modState.generalOrderPrepareError="";void modPreparePerSecondOrderForm();}return;}try{const url=URL.createObjectURL(modState.generalOrderBlob),a=document.createElement("a");a.href=url;a.download=modState.generalOrderFileName||"Per Second Order.xlsx";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);modState.activeOrderDownloaded=true;modUpdateNextReviewControl();mod$("modPerSecondOrderStatus").textContent=`Download started: ${a.download}`;}catch(e){modState.generalOrderPrepareError=modErr(e);modUpdatePerSecondOrderState();}}
 async function modPrepareAeOrderForm(){
@@ -604,7 +661,7 @@ mod$("modCutFile").addEventListener("change",()=>{const file=mod$("modCutFile").
 mod$("modScreenerFiles").addEventListener("change",()=>{modLoadLocalFiles();const selected=[...modState.screeners],previous=modState.screenerMetadataPromise||Promise.resolve();modState.screenerMetadataPromise=previous.catch(()=>null).then(()=>modDetectScreenerMetadata(selected)).catch(e=>{console.warn("Screener metadata scan failed",e);return null;});});
 mod$("modConnect").addEventListener("click",modConnect);mod$("modDisconnect").addEventListener("click",modDisconnect);
 mod$("modSourceTab").addEventListener("change",async()=>{try{const x=await modReadTab(mod$("modSourceTab").value);modBuildMap(x[0]||[]);}catch(e){mod$("modLoadStatus").textContent=modErr(e);}});
-mod$("modLoadRows").addEventListener("click",modLoadRows);mod$("modGenerateOrders").addEventListener("click",modGenerateOrders);mod$("modBuildFrames").addEventListener("click",modBuildFrames);mod$("modExportAeOrder").addEventListener("click",modExportAeOrderForm);mod$("modExportPerSecondOrder").addEventListener("click",modExportPerSecondOrderForm);mod$("modPerSecondStartReview").addEventListener("click",modStartPerSecondReview);mod$("modSecondVendorSelect").addEventListener("change",modUpdateNextReviewControl);mod$("modStartSecondReview").addEventListener("click",()=>{void modStartSelectedSecondReview();});mod$("modResetSecondReview").addEventListener("click",modResetPerSecondFeature);
+mod$("modLoadRows").addEventListener("click",modLoadRows);mod$("modGenerateOrders").addEventListener("click",modGenerateOrders);mod$("modBuildFrames").addEventListener("click",modBuildFrames);mod$("modDownloadDiagnostics").addEventListener("click",modDownloadDiagnostics);mod$("modExportAeOrder").addEventListener("click",modExportAeOrderForm);mod$("modExportPerSecondOrder").addEventListener("click",modExportPerSecondOrderForm);mod$("modPerSecondStartReview").addEventListener("click",modStartPerSecondReview);mod$("modSecondVendorSelect").addEventListener("change",modUpdateNextReviewControl);mod$("modStartSecondReview").addEventListener("click",()=>{void modStartSelectedSecondReview();});mod$("modResetSecondReview").addEventListener("click",modResetPerSecondFeature);
 const aeHeaderFields=["modAeClient","modAeProject","modAeOrderDate"];modSetDateToday(mod$("modAeOrderDate"));aeHeaderFields.forEach(id=>{const field=mod$(id);field.addEventListener("focus",()=>{modState.aeOrderDeferPrepare=true;});field.addEventListener("input",()=>{modInvalidateAeOrderBlob();modUpdateAeOrderState(true);});field.addEventListener("blur",()=>{setTimeout(()=>{modState.aeOrderDeferPrepare=aeHeaderFields.includes(document.activeElement?.id);modUpdateAeOrderState();},0);});});
 const generalHeaderFields=["modOrderSeries","modOrderEpisode","modOrderLicensee","modOrderAddress","modOrderDate"];modSetDateToday(mod$("modOrderDate"));generalHeaderFields.forEach(id=>{const field=mod$(id);field.addEventListener("focus",()=>{modState.generalOrderDeferPrepare=true;});field.addEventListener("input",()=>{modInvalidatePerSecondOrderBlob();modUpdatePerSecondOrderState(true);});field.addEventListener("blur",()=>{setTimeout(()=>{modState.generalOrderDeferPrepare=generalHeaderFields.includes(document.activeElement?.id);modUpdatePerSecondOrderState();},0);});});
 mod$("modAeStartReview").addEventListener("click",()=>{if(mod$("modAeStartReview").disabled)return;mod$("modAeTapePage").classList.add("hidden");mod$("modShots").classList.remove("hidden");mod$("modAeReviewControls").classList.remove("hidden");void modShowAeShot(modState.aeReviewIndex);});

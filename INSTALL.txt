@@ -1,4 +1,4 @@
-Master Order Helper 1.28
+Master Order Helper 1.29 — Local Diagnostics Build
 
 The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages root (the same folder as index.html and style.css):
 - Replace master-order-delivery.html
@@ -6,6 +6,6 @@ The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages 
 - Keep ae-order-form-template.xlsx in this folder for A+E Media Resources orders
 - Keep per-second-order-template.xlsx in this folder for generic Per Second orders
 
-Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.28 and loads the script with the 1.28 cache key.
+Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.29 and loads the script with the 1.29 cache key.
 
-Per Second source seeking remains adaptive per screener, based on actual seek and frame-callback timing. When a source TC predates the detected screener start but maps to a valid clip-relative position, the helper captures that valid position without waiting for a first-frame OCR alignment that cannot produce a valid absolute seek; the shot shows an alignment warning for visual review. First-frame OCR alignment results are cached per file so the same screener is not analyzed repeatedly. Reference-cut capture and order templates are unchanged.
+The Shot Review includes a live Capture Activity panel and a Download Timing Report button. The report separates file load, seek, frame capture, OCR model load, OCR work, shot preparation, and workbook build time. It contains anonymized labels such as “Screener 1,” file size/type, timing values, and browser user-agent only. It does not include video, screenshots, source filenames, timecodes, spreadsheet values, or Google credentials. The report is downloaded locally; it is not sent anywhere automatically.
