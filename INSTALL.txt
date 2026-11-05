@@ -1,4 +1,4 @@
-Master Order Helper 1.29 — Local Diagnostics Build
+Master Order Helper 1.30
 
 The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages root (the same folder as index.html and style.css):
 - Replace master-order-delivery.html
@@ -6,6 +6,6 @@ The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages 
 - Keep ae-order-form-template.xlsx in this folder for A+E Media Resources orders
 - Keep per-second-order-template.xlsx in this folder for generic Per Second orders
 
-Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.29 and loads the script with the 1.29 cache key.
+Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.30 and loads the script with the 1.30 cache key.
 
-The Shot Review includes a live Capture Activity panel and a Download Timing Report button. The report separates file load, seek, frame capture, OCR model load, OCR work, shot preparation, and workbook build time. It contains anonymized labels such as “Screener 1,” file size/type, timing values, and browser user-agent only. It does not include video, screenshots, source filenames, timecodes, spreadsheet values, or Google credentials. The report is downloaded locally; it is not sent anywhere automatically.
+Per Second screener metadata now keeps a detected frame rate even when the container has no embedded start timecode. If the EDL source timecode maps inside that screener's duration, the helper captures it as a clip-relative position and shows a visible note for manual verification against the burned-in timecode. This MediaInfo path reads file metadata in slices and does not require loading a large screener into an FFmpeg memory buffer just because its start-timecode tag is absent. Reference-cut metadata requirements, order templates, and OCR behavior are unchanged. The live Capture Activity panel and local Timing Report from 1.29 remain included.
