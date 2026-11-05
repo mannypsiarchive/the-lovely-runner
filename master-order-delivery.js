@@ -1,9 +1,9 @@
-/* Master Order Helper 1.26 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.27 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
 const MOD_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-const modState = { id:"", title:"", tabs:[], sourceHeaders:[], sourceRows:[], vendors:[], assignments:new Map(), activeSource:"", tokenClient:null, gapiReady:false, gisReady:false, accessToken:"", mapping:{}, cut:null, cutObjectUrl:"", activeRangeVideo:null, screeners:[], screenerMetadata:new Map(), screenerMetadataPromise:null, shots:[], frameObserver:null, frameCleanupObserver:null, ensureShotFrames:null, releaseShotFrames:null, sourceDurationIndex:-1, exportingAe:false, excelJsPromise:null, worker:null, paddleOcr:null, paddleLoadPromise:null, ffmpeg:null, mediaMetadata:null, metadataPromise:null, ffmpegLogs:[], aeTapeTitles:new Map(), aeReviewMode:false, aeReviewIndex:0, aeOrderBlob:null, aeOrderFileName:"", aeOrderRevision:0, aeOrderPreparedRevision:-1, aeOrderPrepareError:"", aeOrderDeferPrepare:false, generalOrderMode:false, generalReviewStarted:false, generalEditingDetails:false, generalOrderBlob:null, generalOrderFileName:"", generalOrderRevision:0, generalOrderPreparedRevision:-1, generalOrderPrepareError:"", exportingPerSecond:false, generalOrderDeferPrepare:false, activeOrderDownloaded:false, switchingPerSecond:false };
+const modState = { id:"", title:"", tabs:[], sourceHeaders:[], sourceRows:[], vendors:[], assignments:new Map(), activeSource:"", tokenClient:null, gapiReady:false, gisReady:false, accessToken:"", mapping:{}, cut:null, cutObjectUrl:"", activeRangeVideo:null, screeners:[], screenerMetadata:new Map(), screenerMetadataPromise:null, shots:[], frameObserver:null, frameCleanupObserver:null, ensureShotFrames:null, releaseShotFrames:null, sourceDurationIndex:-1, exportingAe:false, excelJsPromise:null, worker:null, paddleOcr:null, paddleLoadPromise:null, ffmpeg:null, mediaMetadata:null, metadataPromise:null, ffmpegLogs:[], aeTapeTitles:new Map(), aeReviewMode:false, aeReviewIndex:0, aeOrderBlob:null, aeOrderFileName:"", aeOrderRevision:0, aeOrderPreparedRevision:-1, aeOrderPrepareError:"", aeOrderDeferPrepare:false, generalOrderMode:false, generalReviewStarted:false, generalEditingDetails:false, generalOrderBlob:null, generalOrderFileName:"", generalOrderRevision:0, generalOrderPreparedRevision:-1, generalOrderPrepareError:"", exportingPerSecond:false, generalOrderDeferPrepare:false, activeOrderDownloaded:false, switchingPerSecond:false, sourceSeekProfiles:new Map() };
 const mod$ = id => document.getElementById(id);
 const MOD_FIELDS = [
   {key:"vendor",label:"Source / Vendor",aliases:["source","vendor","vendor/source","archive source"]},
@@ -221,30 +221,57 @@ function modVideoLoad(video,file){
   });
 }
 function modNextDecodedFrame(video,targetTime,fps){
-  if(typeof video.requestVideoFrameCallback!=="function")return new Promise(resolve=>setTimeout(resolve,180));
-  return new Promise((resolve,reject)=>{
-    let done=false,callbackId=null;
+  if(typeof video.requestVideoFrameCallback!=="function")return{promise:new Promise(resolve=>setTimeout(()=>resolve(video.currentTime),180)),cancel:()=>{}};
+  let cancel=()=>{};
+  const promise=new Promise((resolve,reject)=>{
+    let done=false,callbackId=null,timer=null;
     const tolerance=Math.max(.10,2.5/(Number(fps)||24));
     const cleanup=()=>{clearTimeout(timer);if(callbackId!==null&&typeof video.cancelVideoFrameCallback==="function")video.cancelVideoFrameCallback(callbackId);};
-    const finish=(error,mediaTime)=>{if(done)return;done=true;cleanup();if(error){reject(error);return;}video.dataset.lastTargetTime=String(targetTime);if(Number.isFinite(mediaTime))video.dataset.lastMediaTime=String(mediaTime);resolve(mediaTime);};
-    const timer=setTimeout(()=>finish(Error(`No new frame appeared at ${Number(targetTime).toFixed(2)}s; refusing to reuse the previous screenshot.`)),3000);
+    const finish=(error,mediaTime,cancelled=false)=>{if(done)return;done=true;cleanup();if(error){reject(error);return;}if(!cancelled&&Number.isFinite(mediaTime)){video.dataset.lastTargetTime=String(targetTime);video.dataset.lastMediaTime=String(mediaTime);}resolve(mediaTime);};
+    cancel=()=>finish(null,NaN,true);
+    timer=setTimeout(()=>finish(Error(`No new frame appeared at ${Number(targetTime).toFixed(2)}s; refusing to reuse the previous screenshot.`)),3000);
     const onFrame=(_now,metadata)=>{callbackId=null;const mediaTime=Number(metadata?.mediaTime);if(!Number.isFinite(mediaTime)||Math.abs(mediaTime-targetTime)<=tolerance){finish(null,mediaTime);return;}callbackId=video.requestVideoFrameCallback(onFrame);};
     callbackId=video.requestVideoFrameCallback(onFrame);
   });
+  return{promise,cancel:()=>cancel()};
 }
+function modWaitForPaint(){return new Promise(resolve=>{if(typeof requestAnimationFrame!=="function"){setTimeout(resolve,40);return;}requestAnimationFrame(()=>requestAnimationFrame(resolve));});}
+function modSeekedFrameIsReady(video,targetTime,fps){return !video.seeking&&video.readyState>=2&&Math.abs(video.currentTime-targetTime)<=Math.max(.10,1.5/(Number(fps)||24));}
 async function modSeek(video,time,fps=24){
   const t=Number(time);
   if(!Number.isFinite(t)||t<0)throw Error("The requested frame is earlier than the cut timeline start. Check the start TC.");
   if(t>video.duration+.05)throw Error(`The requested frame (${t.toFixed(2)}s) is beyond this video’s duration (${video.duration.toFixed(2)}s). Check the cut timeline start TC.`);
   if(Math.abs(video.currentTime-t)>.002){
-    const framePromise=modNextDecodedFrame(video,t,fps).then(value=>({value}),error=>({error}));
+    const sourceVideo=video===mod$("modVideoSource"),profileKey=sourceVideo?video.dataset.fileKey:"";
+    let profile=sourceVideo?(modState.sourceSeekProfiles.get(profileKey)||{seekCount:0,slowSeekCount:0,adaptive:false}):null;
+    if(sourceVideo)modState.sourceSeekProfiles.set(profileKey,profile);
+    const seekStarted=performance.now();let frameWaiter=null,framePromise=null;
+    if(!sourceVideo||!profile.adaptive){frameWaiter=modNextDecodedFrame(video,t,fps);framePromise=frameWaiter.promise.then(value=>({value}),error=>({error}));}
     await new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{cleanup();reject(Error("Timed out while seeking to the requested timecode."));},10000);
       const cleanup=()=>{clearTimeout(timer);video.removeEventListener("seeked",done);video.removeEventListener("error",bad);};
       const done=()=>{cleanup();resolve();};const bad=()=>{cleanup();reject(Error("Could not seek to the requested timecode."));};
       video.addEventListener("seeked",done,{once:true});video.addEventListener("error",bad,{once:true});video.currentTime=t;
     });
-    const frameResult=await framePromise;if(frameResult.error){const landed=Math.abs(video.currentTime-t)<=Math.max(.10,1.5/(Number(fps)||24));if(video.seeking||video.readyState<2||!landed)throw frameResult.error;video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
+    const seekMs=performance.now()-seekStarted;
+    if(sourceVideo){profile.seekCount++;profile.lastSeekMs=seekMs;profile.maxSeekMs=Math.max(profile.maxSeekMs||0,seekMs);if(seekMs>=450)profile.slowSeekCount++;if(profile.slowSeekCount>=1)profile.adaptive=true;}
+    if(sourceVideo&&profile.adaptive){
+      await modWaitForPaint();
+      if(modSeekedFrameIsReady(video,t,fps)){frameWaiter?.cancel();video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);return;}
+    }
+    if(framePromise){
+      if(sourceVideo){
+        const early=await Promise.race([framePromise,new Promise(resolve=>setTimeout(()=>resolve({delayed:true}),250))]);
+        if(early.delayed){await modWaitForPaint();if(modSeekedFrameIsReady(video,t,fps)){profile.adaptive=true;profile.delayedFrameCallbacks=(profile.delayedFrameCallbacks||0)+1;frameWaiter?.cancel();video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);return;}}
+        else if(early.error){const landed=modSeekedFrameIsReady(video,t,fps);if(video.seeking||video.readyState<2||!landed)throw early.error;}
+      }
+      const frameResult=await framePromise;
+      if(frameResult.error){const landed=modSeekedFrameIsReady(video,t,fps);if(video.seeking||video.readyState<2||!landed)throw frameResult.error;}
+      if(frameWaiter&&sourceVideo&&profile.adaptive)frameWaiter.cancel();
+      video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);
+    }else if(!modSeekedFrameIsReady(video,t,fps)){
+      frameWaiter=modNextDecodedFrame(video,t,fps);framePromise=frameWaiter.promise.then(value=>({value}),error=>({error}));const frameResult=await framePromise;if(frameResult.error)throw frameResult.error;
+    }else{video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
   }else{video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
 }
 function modTcSeconds(tc,fps=24){
@@ -465,6 +492,7 @@ async function modBuildFrames(){
         if(wantsOcr&&result?.ocrPromise){pendingOcr.push(result.ocrPromise.then(ocr=>{const input=which==="in"?shot.inputIn:shot.inputOut;if(ocr&&!input.value.trim()){if(which==="in")shot.ocrIn=ocr;else shot.ocrOut=ocr;input.value=ocr;modUpdateAeOrderState();}return ocr;}).catch(e=>{console.warn(`OCR suggestion failed for ${label}`,e);return "";}));}
       }
       if(shot.sourceOutFallback){if(!shot.sourceOutFallbackNode){shot.sourceOutFallbackNode=document.createElement("p");shot.sourceOutFallbackNode.className="mod-note mod-help";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.sourceOutFallbackNode);else shot.card.prepend(shot.sourceOutFallbackNode);}shot.sourceOutFallbackNode.textContent="Source Out fallback used: captured the last frame at Source In + EDL Source Duration because the direct Source Out seek failed. Verify this frame visually.";}
+      const sourceSeekProfile=modState.sourceSeekProfiles.get(mod$("modVideoSource").dataset.fileKey);if(sourceSeekProfile?.adaptive){if(!shot.adaptiveSeekNode){shot.adaptiveSeekNode=document.createElement("p");shot.adaptiveSeekNode.className="mod-note mod-help";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.adaptiveSeekNode);else shot.card.prepend(shot.adaptiveSeekNode);}shot.adaptiveSeekNode.textContent=`Adaptive source capture enabled for this screener after ${sourceSeekProfile.slowSeekCount||0} slow seek(s) or delayed frame callback(s). The helper now uses the browser’s completed seek plus frame-ready checks.`;}
     }else{shot.sourceInAvailable=false;errors.push("Source In/Out: no matching screener file");modMarkFrameUnavailable(shot.canvases[2],"No screener matched");modMarkFrameUnavailable(shot.canvases[3],"No screener matched");}
     if(wantsOcr){shot.ocrDone=true;shot.ocrPending=Promise.all(pendingOcr).then(()=>{if(modState.shots.includes(shot))modUpdateAeReviewControls();});}
     if(shot.screener){const sourceMeta=modState.screenerMetadata.get(modScreenerKey(shot.screener)),fallbackTcs=sourceMeta?.clipRelativeTcs||[],usedForShot=[shot.srcIn,shot.srcOut].filter(tc=>fallbackTcs.includes(String(tc)));if(usedForShot.length&&!shot.alignmentNode){shot.alignmentNode=document.createElement("p");shot.alignmentNode.className="mod-note mod-help";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.alignmentNode);else shot.card.prepend(shot.alignmentNode);}if(usedForShot.length)shot.alignmentNode.textContent=`Timecode alignment check: the file metadata starts at ${sourceMeta.startTimecode}, but the EDL source TC is ${usedForShot.join(" and ")}. These frames were captured from clip-relative positions; verify them visually.`;}
