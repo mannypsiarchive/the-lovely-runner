@@ -1,4 +1,4 @@
-Master Order Helper 1.27
+Master Order Helper 1.28
 
 The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages root (the same folder as index.html and style.css):
 - Replace master-order-delivery.html
@@ -6,6 +6,6 @@ The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages 
 - Keep ae-order-form-template.xlsx in this folder for A+E Media Resources orders
 - Keep per-second-order-template.xlsx in this folder for generic Per Second orders
 
-Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.27 and loads the script with the 1.27 cache key.
+Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.28 and loads the script with the 1.28 cache key.
 
-Per Second screener capture now measures actual source seek and frame-callback timing for each selected video. When a source file has a slow seek or delayed frame callback, the helper switches that file to a faster path: it waits for the browser's completed seek, waits for the frame to paint, and verifies the requested time and ready state before drawing. The reference cut workflow and order-specific templates are unchanged. Source Out fallback at Source In plus EDL Source Duration remains available if its direct timecode seek fails.
+Per Second source seeking remains adaptive per screener, based on actual seek and frame-callback timing. When a source TC predates the detected screener start but maps to a valid clip-relative position, the helper captures that valid position without waiting for a first-frame OCR alignment that cannot produce a valid absolute seek; the shot shows an alignment warning for visual review. First-frame OCR alignment results are cached per file so the same screener is not analyzed repeatedly. Reference-cut capture and order templates are unchanged.
