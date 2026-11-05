@@ -1,4 +1,4 @@
-/* Master Order Helper 1.25 — browser-only Google Sheets and local video workflow. */
+/* Master Order Helper 1.26 — browser-only Google Sheets and local video workflow. */
 const MOD_FFMPEG_VERSION="0.12.10", MOD_FFMPEG_SCRIPT=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js`, MOD_FFMPEG_CORE=`https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd`, MOD_FFMPEG_WORKER=`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js`;
 const MOD_CLIENT_ID = "154634144934-9hg9o4ra7uriu5hrivaaj73mduj7udf4.apps.googleusercontent.com";
 const MOD_DISCOVERY = "https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -224,12 +224,11 @@ function modNextDecodedFrame(video,targetTime,fps){
   if(typeof video.requestVideoFrameCallback!=="function")return new Promise(resolve=>setTimeout(resolve,180));
   return new Promise((resolve,reject)=>{
     let done=false,callbackId=null;
-    const previousTarget=Number(video.dataset.lastTargetTime),previousMedia=Number(video.dataset.lastMediaTime),hasPrevious=Number.isFinite(previousTarget)&&Number.isFinite(previousMedia),expectedDelta=targetTime-previousTarget;
     const tolerance=Math.max(.10,2.5/(Number(fps)||24));
     const cleanup=()=>{clearTimeout(timer);if(callbackId!==null&&typeof video.cancelVideoFrameCallback==="function")video.cancelVideoFrameCallback(callbackId);};
     const finish=(error,mediaTime)=>{if(done)return;done=true;cleanup();if(error){reject(error);return;}video.dataset.lastTargetTime=String(targetTime);if(Number.isFinite(mediaTime))video.dataset.lastMediaTime=String(mediaTime);resolve(mediaTime);};
     const timer=setTimeout(()=>finish(Error(`No new frame appeared at ${Number(targetTime).toFixed(2)}s; refusing to reuse the previous screenshot.`)),3000);
-    const onFrame=(_now,metadata)=>{callbackId=null;const mediaTime=Number(metadata?.mediaTime);if(!hasPrevious||!Number.isFinite(mediaTime)||Math.abs((mediaTime-previousMedia)-expectedDelta)<=tolerance){finish(null,mediaTime);return;}callbackId=video.requestVideoFrameCallback(onFrame);};
+    const onFrame=(_now,metadata)=>{callbackId=null;const mediaTime=Number(metadata?.mediaTime);if(!Number.isFinite(mediaTime)||Math.abs(mediaTime-targetTime)<=tolerance){finish(null,mediaTime);return;}callbackId=video.requestVideoFrameCallback(onFrame);};
     callbackId=video.requestVideoFrameCallback(onFrame);
   });
 }
@@ -245,7 +244,7 @@ async function modSeek(video,time,fps=24){
       const done=()=>{cleanup();resolve();};const bad=()=>{cleanup();reject(Error("Could not seek to the requested timecode."));};
       video.addEventListener("seeked",done,{once:true});video.addEventListener("error",bad,{once:true});video.currentTime=t;
     });
-    const frameResult=await framePromise;if(frameResult.error)throw frameResult.error;
+    const frameResult=await framePromise;if(frameResult.error){const landed=Math.abs(video.currentTime-t)<=Math.max(.10,1.5/(Number(fps)||24));if(video.seeking||video.readyState<2||!landed)throw frameResult.error;video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
   }else{video.dataset.lastTargetTime=String(t);video.dataset.lastMediaTime=String(video.currentTime);}
 }
 function modTcSeconds(tc,fps=24){
@@ -253,7 +252,7 @@ function modTcSeconds(tc,fps=24){
   if(p.length<3||p.some(Number.isNaN))throw Error(`Invalid timecode “${tc}”. Use HH:MM:SS:FF.`);
   return p.slice(0,3).reduce((n,x)=>n*60+x,0)+(p[3]||0)/fps;
 }
-async function modCapture(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=false){
+async function modCapture(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=false,deferOcr=false,secondsOverride=null){
   if(!file)return "";await modVideoLoad(video,file);
   let fps,seconds;
   if(video===mod$("modVideoCut")){
@@ -262,31 +261,36 @@ async function modCapture(video,file,tc,canvas,offset=0,ocrEngine=null,readOcr=f
   }else{
     let metadata=modState.screenerMetadata.get(modScreenerKey(file));
     if(!metadata)throw Error(`Could not read embedded start timecode and frame rate for screener ${file.name}.`);
-    fps=metadata.fps;let frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);
+    fps=metadata.fps;
+    if(Number.isFinite(secondsOverride))seconds=secondsOverride;
+    else{let frames=modParseTcFrames(tc,fps)-modParseTcFrames(metadata.startTimecode,fps);
     seconds=frames/fps-offset;
     if(seconds<0||seconds>video.duration+.05){
       try{const visualStart=await modVisualStartTc(video,file,fps);if(visualStart){const visualFrames=modParseTcFrames(tc,fps)-modParseTcFrames(visualStart,fps),visualSeconds=visualFrames/fps-offset;if(visualSeconds>=0&&visualSeconds<=video.duration+.05){metadata={...metadata,startTimecode:visualStart,source:metadata.source+" + first-frame BITC OCR"};modState.screenerMetadata.set(modScreenerKey(file),metadata);seconds=visualSeconds;} }}catch(e){console.warn("Could not align screener from first-frame BITC",e);}
     }
     if(seconds<0||seconds>video.duration+.05){
-      // Narrow fallback for files whose embedded start TC is incompatible with an
-      // EDL timecode but whose clip-relative frame position is inside this file.
       let relativeSeconds=NaN;try{relativeSeconds=modParseTcFrames(tc,fps)/fps-offset/fps;}catch{}
       if(relativeSeconds>=0&&relativeSeconds<=video.duration+.05){seconds=relativeSeconds;const clipRelativeTcs=[...new Set([...(metadata.clipRelativeTcs||[]),String(tc)])];metadata={...metadata,clipRelativeTcs};modState.screenerMetadata.set(modScreenerKey(file),metadata);}
     }
-    if(seconds<0||seconds>video.duration+.05)throw Error(`Source TC ${tc} maps to ${seconds.toFixed(2)}s in a ${video.duration.toFixed(2)}s screener (detected start ${metadata.startTimecode}). Check the Source In/Out column mapping or the screener’s start timecode.`);
+    if(seconds<0||seconds>video.duration+.05)throw Error(`Source TC ${tc} maps to ${seconds.toFixed(2)}s in a ${video.duration.toFixed(2)}s screener (detected start ${metadata.startTimecode}). Check the Source In/Out column mapping or the screener’s start timecode.`);}
+    if(seconds<0||seconds>video.duration+.05)throw Error(`Fallback frame at ${seconds.toFixed(2)}s is beyond this ${video.duration.toFixed(2)}s screener.`);
   }
   await modSeek(video,seconds,fps);
   const sourceWidth=video.videoWidth||640,sourceHeight=video.videoHeight||360;
   const scale=Math.min(1,960/sourceWidth),previewWidth=Math.max(1,Math.round(sourceWidth*scale)),previewHeight=Math.max(1,Math.round(sourceHeight*scale));
-  let ocr="",full=null;
+  let ocr="",full=null,ocrPromise=null;
   try{
     const target=canvas.getContext("2d");canvas.width=previewWidth;canvas.height=previewHeight;
-    if(readOcr){full=document.createElement("canvas");full.width=sourceWidth;full.height=sourceHeight;full.getContext("2d").drawImage(video,0,0,sourceWidth,sourceHeight);ocr=await modReadBurntInTc(ocrEngine,full);target.drawImage(full,0,0,previewWidth,previewHeight);}
-    else target.drawImage(video,0,0,previewWidth,previewHeight);
+    if(readOcr){
+      full=document.createElement("canvas");full.width=sourceWidth;full.height=sourceHeight;full.getContext("2d").drawImage(video,0,0,sourceWidth,sourceHeight);
+      target.drawImage(full,0,0,previewWidth,previewHeight);
+      if(deferOcr)ocrPromise=Promise.resolve(ocrEngine).then(engine=>modReadBurntInTc(engine,full)).finally(()=>{if(full){full.width=1;full.height=1;}});
+      else ocr=await modReadBurntInTc(ocrEngine,full);
+    }else target.drawImage(video,0,0,previewWidth,previewHeight);
     canvas.dataset.captured="true";canvas.hidden=false;delete canvas.dataset.error;
     const placeholder=canvas.parentElement?.querySelector(".mod-frame-placeholder");if(placeholder)placeholder.hidden=true;
-  }finally{if(full){full.width=1;full.height=1;}}
-  return ocr;
+  }finally{if(full&&!ocrPromise){full.width=1;full.height=1;}}
+  return deferOcr&&ocrPromise?{ocrPromise}:ocr;
 }
 function modCutSeconds(tc){
   const metadata=modState.mediaMetadata;
@@ -294,6 +298,20 @@ function modCutSeconds(tc){
   const frames=modParseTcFrames(tc,metadata.fps)-modParseTcFrames(metadata.startTimecode,metadata.fps);
   if(frames<0)throw Error(`EDL time ${tc} is before the reference file start ${metadata.startTimecode}.`);
   return frames/metadata.fps;
+}
+function modSourceOutFallbackSeconds(shot,video){
+  const file=shot?.screener,metadata=file?modState.screenerMetadata.get(modScreenerKey(file)):null;
+  if(!metadata||!Number.isFinite(metadata.fps)||metadata.fps<=0)throw Error("Screener frame rate is unavailable for the duration fallback.");
+  const fps=metadata.fps,inFrames=modParseTcFrames(shot.srcIn,fps);
+  const relative=Array.isArray(metadata.clipRelativeTcs)&&metadata.clipRelativeTcs.includes(String(shot.srcIn));
+  const startFrames=relative?0:modParseTcFrames(metadata.startTimecode,fps);
+  const sourceInSeconds=(inFrames-startFrames)/fps;
+  const duration=modDurationSeconds(shot.sourceDuration,fps);
+  if(!(duration>0))throw Error("EDL Source Duration is missing or invalid; cannot calculate the fallback frame.");
+  const durationFrames=Math.max(1,Math.round(duration*fps));
+  const target=sourceInSeconds+(durationFrames-1)/fps;
+  if(!Number.isFinite(target)||target<0||target>video.duration+.05)throw Error(`Source In + EDL duration lands at ${Number(target).toFixed(2)}s, outside the ${video.duration.toFixed(2)}s screener.`);
+  return target;
 }
 async function modVisualStartTc(video,file,fps){
   await modVideoLoad(video,file);
@@ -424,16 +442,31 @@ async function modBuildFrames(){
   let completed=shots.filter(s=>s.processedOnce).length,running=false;const queue=[];let worker=null,ocrMode=mod$("modRunOcr").checked?"PaddleOCR":"off";
   const update=()=>{mod$("modProgressBar").style.width=Math.round(completed/shots.length*100)+"%";if(isClickReview){mod$("modFrameStatus").textContent=`Frames ready: ${completed} of ${shots.length}. Review one shot at a time. OCR: ${ocrMode}.`;if(completed===shots.length){mod$("modBuildFrames").disabled=false;mod$("modFrameStatus").textContent=`All ${shots.length} shots are ready for one-by-one review.`;}}else{mod$("modFrameStatus").textContent=`Frames ready: ${completed} of ${shots.length}. Previews load near the viewport and release offscreen. OCR: ${ocrMode}.`;if(completed===shots.length){mod$("modWriteSecond").disabled=false;mod$("modBuildFrames").disabled=false;mod$("modFrameStatus").textContent=`All ${shots.length} shots are ready in show order.`;}}};
   const captureShot=async shot=>{
+    shot.sourceOutFallback=false;if(shot.sourceOutFallbackNode){shot.sourceOutFallbackNode.remove();shot.sourceOutFallbackNode=null;}
     shot.processing=true;shot.canvases.forEach(c=>{const ph=c.parentElement?.querySelector(".mod-frame-placeholder");if(ph&&!c.dataset.captured)ph.textContent="Loading frame…";});
-    const errors=[],wantsOcr=mod$("modRunOcr").checked&&shot.screener&&!shot.ocrDone;
-    if(wantsOcr&&!worker){mod$("modFrameStatus").textContent="Loading OCR for the visible source frames…";try{worker=await modEnsurePaddle();}catch(e){ocrMode="Tesseract fallback";console.warn("PaddleOCR could not start; using Tesseract",e);}}
+    const errors=[],wantsOcr=mod$("modRunOcr").checked&&shot.screener&&!shot.ocrDone,pendingOcr=[];
+    let workerPromise=Promise.resolve(worker);
+    if(wantsOcr&&!worker){mod$("modFrameStatus").textContent="Loading OCR while screenshots are captured…";workerPromise=modEnsurePaddle().then(engine=>{worker=engine;return engine;}).catch(e=>{ocrMode="Tesseract fallback";console.warn("PaddleOCR could not start; using Tesseract",e);return null;});}
     const cutRequests=[[shot.timeIn,shot.canvases[0],3,"Cut In"],[shot.timeOut,shot.canvases[1],-3,"Cut Out"]];
     for(const [tc,canvas,frames,label] of cutRequests){try{await modCapture(mod$("modVideoCut"),modState.cut,tc,canvas,frames);}catch(e){errors.push(`${label}: ${modErr(e)}`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);}}
     if(shot.screener){
       const sourceRequests=[[shot.srcIn,shot.canvases[2],"in","Source In"],[shot.srcOut,shot.canvases[3],"out","Source Out"]];
-      for(const [tc,canvas,which,label] of sourceRequests){if(!modLooksLikeTc(tc)){errors.push(`${label}: “${tc||"blank"}” is not a timecode; check the tracker column sample.`);modMarkFrameUnavailable(canvas,`${label} timecode unavailable`);if(which==="in")shot.sourceInAvailable=false;continue;}try{const ocr=await modCapture(mod$("modVideoSource"),shot.screener,tc,canvas,0,worker,wantsOcr);if(which==="in")shot.sourceInAvailable=true;if(wantsOcr){if(which==="in"&&!shot.ocrIn){shot.ocrIn=ocr;shot.inputIn.value=ocr;}else if(which==="out"&&!shot.ocrOut){shot.ocrOut=ocr;shot.inputOut.value=ocr;}}}catch(e){errors.push(`${label}: ${modErr(e)}`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);if(which==="in")shot.sourceInAvailable=false;}}
+      for(const [tc,canvas,which,label] of sourceRequests){
+        if(!modLooksLikeTc(tc)){errors.push(`${label}: “${tc||"blank"}” is not a timecode; check the tracker column sample.`);modMarkFrameUnavailable(canvas,`${label} timecode unavailable`);if(which==="in")shot.sourceInAvailable=false;continue;}
+        let result;
+        try{result=await modCapture(mod$("modVideoSource"),shot.screener,tc,canvas,0,workerPromise,wantsOcr,true);}
+        catch(e){
+          if(which==="out"&&modLooksLikeTc(shot.srcIn)&&modDurationSeconds(shot.sourceDuration,modState.screenerMetadata.get(modScreenerKey(shot.screener))?.fps||fps)>0){
+            try{const fallbackSeconds=modSourceOutFallbackSeconds(shot,mod$("modVideoSource"));result=await modCapture(mod$("modVideoSource"),shot.screener,tc,canvas,0,workerPromise,wantsOcr,true,fallbackSeconds);shot.sourceOutFallback=true;}
+            catch(fallbackError){errors.push(`${label}: direct timecode seek failed (${modErr(e)}); Source In + EDL duration fallback failed (${modErr(fallbackError)}).`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);continue;}
+          }else{errors.push(`${label}: ${modErr(e)}`);modMarkFrameUnavailable(canvas,`${label} frame unavailable`);if(which==="in")shot.sourceInAvailable=false;continue;}
+        }
+        if(which==="in")shot.sourceInAvailable=true;
+        if(wantsOcr&&result?.ocrPromise){pendingOcr.push(result.ocrPromise.then(ocr=>{const input=which==="in"?shot.inputIn:shot.inputOut;if(ocr&&!input.value.trim()){if(which==="in")shot.ocrIn=ocr;else shot.ocrOut=ocr;input.value=ocr;modUpdateAeOrderState();}return ocr;}).catch(e=>{console.warn(`OCR suggestion failed for ${label}`,e);return "";}));}
+      }
+      if(shot.sourceOutFallback){if(!shot.sourceOutFallbackNode){shot.sourceOutFallbackNode=document.createElement("p");shot.sourceOutFallbackNode.className="mod-note mod-help";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.sourceOutFallbackNode);else shot.card.prepend(shot.sourceOutFallbackNode);}shot.sourceOutFallbackNode.textContent="Source Out fallback used: captured the last frame at Source In + EDL Source Duration because the direct Source Out seek failed. Verify this frame visually.";}
     }else{shot.sourceInAvailable=false;errors.push("Source In/Out: no matching screener file");modMarkFrameUnavailable(shot.canvases[2],"No screener matched");modMarkFrameUnavailable(shot.canvases[3],"No screener matched");}
-    if(wantsOcr)shot.ocrDone=true;
+    if(wantsOcr){shot.ocrDone=true;shot.ocrPending=Promise.all(pendingOcr).then(()=>{if(modState.shots.includes(shot))modUpdateAeReviewControls();});}
     if(shot.screener){const sourceMeta=modState.screenerMetadata.get(modScreenerKey(shot.screener)),fallbackTcs=sourceMeta?.clipRelativeTcs||[],usedForShot=[shot.srcIn,shot.srcOut].filter(tc=>fallbackTcs.includes(String(tc)));if(usedForShot.length&&!shot.alignmentNode){shot.alignmentNode=document.createElement("p");shot.alignmentNode.className="mod-note mod-help";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.alignmentNode);else shot.card.prepend(shot.alignmentNode);}if(usedForShot.length)shot.alignmentNode.textContent=`Timecode alignment check: the file metadata starts at ${sourceMeta.startTimecode}, but the EDL source TC is ${usedForShot.join(" and ")}. These frames were captured from clip-relative positions; verify them visually.`;}
     if(modLooksLikeTc(shot.srcIn)&&modLooksLikeTc(shot.srcOut)&&shot.screener){try{const sourceFps=modState.screenerMetadata.get(modScreenerKey(shot.screener))?.fps||fps;if(modParseTcFrames(shot.srcOut,sourceFps)<modParseTcFrames(shot.srcIn,sourceFps))errors.push("Source Out precedes Source In; verify the source-timecode columns.");}catch{}}
     shot.error=errors.join(" · ");if(errors.length){if(!shot.warningNode){shot.warningNode=document.createElement("p");shot.warningNode.className="mod-status error mod-shot-warning";const head=shot.card.querySelector(".mod-shot-head");if(head)head.after(shot.warningNode);else shot.card.prepend(shot.warningNode);}shot.warningNode.textContent="Review this row: "+shot.error;}else if(shot.warningNode){shot.warningNode.remove();shot.warningNode=null;}
@@ -456,9 +489,9 @@ function modAeSortedShots(){const fps=modState.mediaMetadata?.fps||24;return [..
 function modTcFramesSafe(tc,fps){try{return modParseTcFrames(tc,fps);}catch{return Number.MAX_SAFE_INTEGER;}}
 async function modCreateAeOrderBlob(revision){
   const status=mod$("modAeOrderStatus");status.textContent="Loading the formatted A+E order form…";
-  const [ExcelJS,response]=await Promise.all([modEnsureExcelJs(),fetch(new URL("ae-order-form-template.xlsx?v=1.25",document.baseURI))]);
+  const [ExcelJS,response]=await Promise.all([modEnsureExcelJs(),fetch(new URL("ae-order-form-template.xlsx?v=1.26",document.baseURI))]);
   if(!response.ok)throw Error(`Could not load the A+E form template (HTTP ${response.status}).`);
-  const templateBytes=await response.arrayBuffer();if(new TextDecoder().decode(templateBytes.slice(0,2))!=="PK")throw Error("The A+E template response is not an .xlsx file. Check that the included template is installed beside the page.");const workbook=new ExcelJS.Workbook();try{await workbook.xlsx.load(templateBytes);}catch(e){throw Error(`Could not read the included A+E Excel template (${modErr(e)}). Replace ae-order-form-template.xlsx with the file from this v1.25 package and try again.`);}workbook.creator="Lovely Runner";workbook.created=new Date();workbook.subject="A+E Media Resources per-second order";workbook.title="A+E Media Resources Order Form";
+  const templateBytes=await response.arrayBuffer();if(new TextDecoder().decode(templateBytes.slice(0,2))!=="PK")throw Error("The A+E template response is not an .xlsx file. Check that the included template is installed beside the page.");const workbook=new ExcelJS.Workbook();try{await workbook.xlsx.load(templateBytes);}catch(e){throw Error(`Could not read the included A+E Excel template (${modErr(e)}). Replace ae-order-form-template.xlsx with the file from this v1.26 package and try again.`);}workbook.creator="Lovely Runner";workbook.created=new Date();workbook.subject="A+E Media Resources per-second order";workbook.title="A+E Media Resources Order Form";
   const ws=workbook.getWorksheet("Hi-Res Clip Order Form");if(!ws)throw Error("The A+E template is missing its order-form sheet.");
   ws.getCell("B2").value="Hi-Res Clip Order Template";
   ws.getCell("C3").value=String(mod$("modAeClient").value||"").trim();ws.getCell("C4").value=String(mod$("modAeProject").value||"").trim();
@@ -490,9 +523,9 @@ function modGeneralHeaderIssues(){const issues=[];if(!String(mod$("modOrderSerie
 function modStartPerSecondReview(){const required=["modPerSecondOrderSetupStatus","modPerSecondOrderSetup","modPerSecondStartReview","modShots","modAeReviewControls","modFrameStatus"];const missingPageIds=required.filter(id=>!mod$(id));if(missingPageIds.length){const target=mod$("modPerSecondOrderSetupStatus");if(target){target.className="mod-status error";target.textContent=`Page files are out of sync. Replace both master-order-delivery.html and master-order-delivery.js (missing: ${missingPageIds.join(", ")}).`;}return;}const status=mod$("modPerSecondOrderSetupStatus");const missing=modGeneralHeaderIssues();if(missing.length){status.className="mod-status error";status.textContent=`Fill in ${missing.join(", ")}.`;return;}status.className="mod-status hidden";if(modState.generalReviewStarted&&modState.shots.length){modState.generalEditingDetails=false;mod$("modPerSecondOrderSetup").classList.add("hidden");mod$("modShots").classList.remove("hidden");mod$("modAeReviewControls").classList.remove("hidden");void modShowAeShot(modState.aeReviewIndex);return;}modState.generalEditingDetails=false;mod$("modPerSecondStartReview").disabled=true;mod$("modPerSecondStartReview").textContent="Preparing…";mod$("modPerSecondOrderSetup").classList.add("hidden");void modBuildFrames().catch(e=>{status.className="mod-status error";status.textContent=modErr(e);}).finally(()=>{mod$("modPerSecondStartReview").disabled=false;mod$("modPerSecondStartReview").textContent=modState.generalReviewStarted?"Return to Shot Review":"Start Shot Review";if(!modState.generalReviewStarted&&modState.generalOrderMode)mod$("modPerSecondOrderSetup").classList.remove("hidden");});}
 async function modCreatePerSecondOrderBlob(revision){
   const status=mod$("modPerSecondOrderStatus");status.textContent="Loading the formatted order form…";
-  const [ExcelJS,response]=await Promise.all([modEnsureExcelJs(),fetch(new URL("per-second-order-template.xlsx?v=1.25",document.baseURI))]);
+  const [ExcelJS,response]=await Promise.all([modEnsureExcelJs(),fetch(new URL("per-second-order-template.xlsx?v=1.26",document.baseURI))]);
   if(!response.ok)throw Error(`Could not load the Per Second form template (HTTP ${response.status}).`);
-  const templateBytes=await response.arrayBuffer();if(new TextDecoder().decode(templateBytes.slice(0,2))!=="PK")throw Error("The Per Second template response is not an .xlsx file. Check that the included template is installed beside the page.");const workbook=new ExcelJS.Workbook();try{await workbook.xlsx.load(templateBytes);}catch(e){throw Error(`Could not read the included Per Second Excel template (${modErr(e)}). Replace per-second-order-template.xlsx with the file from this v1.25 package and try again.`);}workbook.creator="Lovely Runner";workbook.created=new Date();workbook.subject="Per Second footage order";workbook.title="Per Second Order Form";
+  const templateBytes=await response.arrayBuffer();if(new TextDecoder().decode(templateBytes.slice(0,2))!=="PK")throw Error("The Per Second template response is not an .xlsx file. Check that the included template is installed beside the page.");const workbook=new ExcelJS.Workbook();try{await workbook.xlsx.load(templateBytes);}catch(e){throw Error(`Could not read the included Per Second Excel template (${modErr(e)}). Replace per-second-order-template.xlsx with the file from this v1.26 package and try again.`);}workbook.creator="Lovely Runner";workbook.created=new Date();workbook.subject="Per Second footage order";workbook.title="Per Second Order Form";
   const ws=workbook.getWorksheet("MASTER ORDER TEMPLATE");if(!ws)throw Error("The Per Second template is missing the MASTER ORDER TEMPLATE sheet.");
   ws.getCell("B1").value=String(mod$("modOrderSeries").value||"").trim();ws.getCell("B2").value=String(mod$("modOrderEpisode").value||"").trim();ws.getCell("B3").value=String(mod$("modOrderLicensee").value||"").trim();ws.getCell("B4").value=String(mod$("modOrderAddress").value||"").trim();
   const dateParts=String(mod$("modOrderDate").value||"").split("-").map(Number);if(dateParts.length!==3||dateParts.some(n=>!Number.isFinite(n)))throw Error("Enter a valid order date.");ws.getCell("B5").value=new Date(Date.UTC(dateParts[0],dateParts[1]-1,dateParts[2]));ws.getCell("B5").numFmt="mm/dd/yyyy";

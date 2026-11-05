@@ -1,4 +1,4 @@
-Master Order Helper 1.25
+Master Order Helper 1.26
 
 The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages root (the same folder as index.html and style.css):
 - Replace master-order-delivery.html
@@ -6,6 +6,6 @@ The install files are at the ZIP's top level. In the Lovely Runner GitHub Pages 
 - Keep ae-order-form-template.xlsx in this folder for A+E Media Resources orders
 - Keep per-second-order-template.xlsx in this folder for generic Per Second orders
 
-Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.25 and loads the script with the 1.25 cache key.
+Do not upload these files inside a new subfolder. Commit and push the four app files, then hard-refresh the Master Order Helper page. The page displays version 1.26 and loads the script with the 1.26 cache key.
 
-Source-frame capture uses embedded start timecode whenever it maps inside the screener. If that mapping falls outside the clip but the EDL timecode maps to a valid clip-relative frame, the helper captures from that position and displays a visible alignment warning for manual verification. Reference-cut timing and previously valid source mappings are unchanged.
+Shot review keeps the existing timecode mapping and order-specific templates. Source Out first uses the EDL Source Out timecode. If that seek fails, the helper tries the last inclusive frame calculated from Source In plus the exact EDL Source Duration. A visible note marks fallback captures for visual verification; the fallback is skipped if its target falls outside the screener. OCR still runs at full source resolution in the background while the frame preview appears.
