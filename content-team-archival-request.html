@@ -17,7 +17,7 @@
     <section class="request-card">
       <div id="formView">
         
-        <div class="section-kicker">New Third Party Vendor Licensing Agreement Review and Approval</div>
+        <div class="section-kicker">Third Party Vendor Review</div>
         <form id="vendorForm">
           <div class="form-grid">
             <div class="field"><label for="vendorName">Vendor name <span class="required">*</span></label><input id="vendorName" required placeholder="e.g. Getty Images"></div>
@@ -30,6 +30,10 @@
             <div class="field full"><label for="additionalNotes">Any additional notes/comments?</label><textarea id="additionalNotes" placeholder="Optional"></textarea></div>
             <div class="field full"><label>Have you asked vendor if they would sign A+E Factual Studios Materials Release? <span class="required">*</span></label><div class="choice-row"><label><input type="radio" name="materialsRelease" value="Yes" required> Yes</label><label><input type="radio" name="materialsRelease" value="No" required> No</label></div></div>
             <div class="field full"><label>Is the vendor open to redlines to their agreement? <span class="required">*</span></label><div class="choice-row"><label><input type="radio" name="redlines" value="Yes" required> Yes</label><label><input type="radio" name="redlines" value="No" required> No</label></div></div>
+            <div class="field"><label for="representativeName">Representative Name</label><input id="representativeName" placeholder="Vendor representative"></div>
+            <div class="field"><label for="representativeEmail">Representative Email</label><input id="representativeEmail" type="email" placeholder="name@vendor.com"></div>
+            <div class="field"><label for="representativePhone">Representative Phone <em>optional</em></label><input id="representativePhone" type="tel" placeholder="Phone number"></div>
+            <div class="field full"><label for="vendorRateInfo">Vendor Rate Information</label><textarea id="vendorRateInfo" placeholder="Describe rates, minimums, or other pricing details"></textarea></div>
             <div class="field full"><label for="license">License or supporting document <span class="required">*</span></label><div class="upload" id="dropArea"><input id="license" type="file" required accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"><div><span class="upload-icon">↥</span><strong>Choose a file or drop it here</strong><small>License, agreement, release, or related document · PDF, Word, Excel, or image</small><div class="attach-list" id="attachList"></div></div></div></div>
           </div>
           <div class="approval-note"><span>✦</span><span><b>Review first, then share.</b> This request will go to the selected manager. The Vendor Grid is updated after approval.</span></div>
@@ -58,7 +62,7 @@
       document.getElementById('draftCc').textContent=[...fixedCc,...extras].join('; ');
       document.getElementById('draftSubject').textContent=`${series} ${episode} - ${vendor} - Agreement for Review and Approval`;
       const greeting=manager.split(' ')[0];
-      const body=`Hi ${greeting},\n\nThe ${series} would like a review of the vendor ${vendor} for the following episode/segment ${episode}.\n\nContent we wish to license: ${val('context')}\n\nContext of use of material: ${val('useContext')}\n\nWe have${materials==='no'?' not':''} asked the vendor if they would sign our A+E Factual Studios Materials Release.\nThey are${redlines==='no'?' not':''} open to redlines.${val('additionalNotes')?'\n\nAdditional notes/comments: '+val('additionalNotes'):''}\n\nThank you,`;
+      const body=`Hi ${greeting},\n\nThe ${series} would like a review of the vendor ${vendor} for the following episode/segment ${episode}.\n\nContent we wish to license: ${val('context')}\n\nContext of use of material: ${val('useContext')}\n\nWe have${materials==='no'?' not':''} asked the vendor if they would sign our A+E Factual Studios Materials Release.\nThey are${redlines==='no'?' not':''} open to redlines.\n\n(Representative Name): ${val('representativeName')||'Not provided'}\n(Representative Email): ${val('representativeEmail')||'Not provided'}\n(Representative Phone): ${val('representativePhone')||'Not provided'}\n(Vendor Rate Information): ${val('vendorRateInfo')||'Not provided'}${val('additionalNotes')?'\n\nAdditional notes/comments: '+val('additionalNotes'):''}\n\nThank you!`;
       document.getElementById('draftBody').textContent=body;
       document.getElementById('draftAttachment').textContent=fileInput.files[0]?.name||'No file selected';
       document.getElementById('formView').classList.add('hidden');document.getElementById('successView').classList.add('show')});
