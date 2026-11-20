@@ -131,6 +131,46 @@ h1 {
   padding: clamp(24px, 5vw, 46px);
 }
 
+.dev-tools-entry {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+}
+
+.dev-tools-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid rgba(161, 181, 234, .12);
+  border-radius: 999px;
+  color: #7883a4;
+  background: rgba(18, 25, 48, .35);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-decoration: none;
+  transition: color .15s, border-color .15s, background .15s;
+}
+
+.dev-tools-link:hover, .dev-tools-link:focus-visible {
+  color: #c3ceff;
+  border-color: rgba(161, 181, 234, .35);
+  background: rgba(18, 25, 48, .75);
+  outline: none;
+}
+
+.dev-tools-page { max-width: 900px; margin: 0 auto; }
+.dev-tools-heading { margin-bottom: 22px; }
+.dev-tools-heading h2 { margin-top: 8px; font-size: clamp(30px, 5vw, 46px); letter-spacing: -.05em; }
+.dev-tools-heading p { margin-top: 9px; color: var(--muted); line-height: 1.55; }
+.dev-tool-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 108px; }
+.dev-tool-card .tool-copy strong { font-size: 17px; }
+.dev-tool-card .tool-copy span { max-width: 600px; }
+.dev-tools-note { margin-top: 18px; color: #7782a1; font-size: 12px; line-height: 1.5; text-align: center; }
+.dev-back-link { display: inline-flex; margin-bottom: 20px; color: #aebdff; font-size: 13px; text-decoration: none; }
+.dev-back-link:hover { color: #fff; }
+
 .home-card::before {
   content: "";
   position: absolute;

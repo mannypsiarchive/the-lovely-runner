@@ -23,3 +23,11 @@ Copy both files from `rollback-1.9/` into the site root to restore version 1.9.
 ## Verification
 
 The JavaScript syntax check and a mocked order-form build/download check passed. This package was not run in a browser against the live tracker or source video files.
+
+## Lovely Runner 1.2: Dev Tools workspace
+
+- Added a small Dev Tools link below the main tool suite.
+- Added a separate Dev Tools page with **Content Team Archival Request** as its first workshop tool.
+- Added a starter page for Content Team Archival Request.
+
+The subtle link and `noindex` metadata keep the workflow out of the main navigation and discourage search indexing. They do not restrict access; static GitHub Pages files remain accessible to anyone who knows the URL. Use authentication or a private deployment if the dev tools must be access-controlled.
