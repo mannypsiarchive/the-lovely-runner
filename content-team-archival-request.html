@@ -55,8 +55,17 @@
     const fileInput=document.getElementById('license'), list=document.getElementById('attachList'), drop=document.getElementById('dropArea');
     function showFiles(files){list.innerHTML='';[...files].forEach(f=>{const chip=document.createElement('span');chip.className='file-chip';chip.textContent='📎 '+f.name;list.appendChild(chip)})}
     fileInput.addEventListener('change',()=>showFiles(fileInput.files));
-    ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag')}));
-    ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag')}));
+    ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();drop.classList.add('drag')}));
+    ['dragleave','dragend'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();drop.classList.remove('drag')}));
+    drop.addEventListener('drop',e=>{
+      e.preventDefault();e.stopPropagation();drop.classList.remove('drag');
+      const files=[...(e.dataTransfer?.files||[])];
+      if(!files.length)return;
+      const accepted=files.filter(file=>/\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i.test(file.name));
+      if(!accepted.length){alert('Please drop a PDF, Word, Excel, JPG, or PNG file.');return;}
+      const transfer=new DataTransfer();transfer.items.add(accepted[0]);fileInput.files=transfer.files;
+      showFiles(fileInput.files);fileInput.dispatchEvent(new Event('change',{bubbles:true}));
+    });
     const managerEmails={'Nancy Kim':'Nancy.Kim@aegm.com','Sunny Turner':'Sunny.Turner@aegm.com'};
     document.getElementById('vendorForm').addEventListener('submit',e=>{e.preventDefault();
       const val=id=>document.getElementById(id).value.trim(), manager=val('manager'), vendor=val('vendorName'), series=val('series'), episode=val('episode');
