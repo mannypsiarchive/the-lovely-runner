@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.26";
+const LOGGER_BUILD = "1.27";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -973,8 +973,12 @@ window.addEventListener("load", () => {
   $("signOutButton").addEventListener("click", disconnect);
   $("resetSourceButton").addEventListener("click", resetSourceFolder);
   $("clipFolder").addEventListener("change", async (event) => {
+    // Copy the FileList before clearing the input. Clearing it lets the user
+    // choose the same folder again and still trigger another change event.
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = "";
     try {
-      await useSelectedFolderFiles(event.target.files);
+      await useSelectedFolderFiles(selectedFiles);
     } catch (error) {
       $("sourceFolderName").textContent = "Could not read selected folder: " + getErrorMessage(error);
       $("clipSelectionStatus").textContent = "Folder selected, but its contents could not be prepared.";
@@ -983,6 +987,8 @@ window.addEventListener("load", () => {
   $("chooseSourceButton").addEventListener("click", async () => {
     if (!window.showDirectoryPicker || state.useFolderInputFallback) {
       $("sourceFolderName").textContent = "Opening compatibility folder picker…";
+      // Reset before opening so re-selecting the same folder still fires change.
+      $("clipFolder").value = "";
       $("clipFolder").click();
       return;
     }
