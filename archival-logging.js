@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.27";
+const LOGGER_BUILD = "1.28";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -1002,7 +1002,11 @@ window.addEventListener("load", () => {
       await updateClipPreview();
     } catch (error) {
       if (error.name === "AbortError") {
-        $("sourceFolderName").textContent = "Folder selection cancelled.";
+        // Some browser contexts expose showDirectoryPicker but do not return
+        // the selected handle. Switch to the established input picker so the
+        // user can still load and log the folder's files.
+        state.useFolderInputFallback = true;
+        $("sourceFolderName").textContent = "The direct folder picker did not return access. Click Choose Source Folder again to use the standard folder picker.";
       } else {
         state.useFolderInputFallback = true;
         $("sourceFolderName").textContent = "Could not open the direct folder picker: " + getErrorMessage(error) + ". Click Choose Source Folder again to use the compatibility picker.";
