@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.28";
+const LOGGER_BUILD = "1.29";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -24,7 +24,6 @@ const state = {
   clipFiles: [],
   clipRows: [],
   sourceDirectoryHandle: null,
-  useFolderInputFallback: false,
   undoSnapshot: null,
   renameRecords: [],
   manualVendors: [],
@@ -669,7 +668,6 @@ async function applyTrackerAdjustment(type) {
 
 function resetSourceFolder() {
   state.sourceDirectoryHandle = null;
-  state.useFolderInputFallback = false;
   state.clipFiles = [];
   state.clipRows = [];
   state.manualOverrides = {};
@@ -824,15 +822,19 @@ function finalFileName(value, originalName) {
 }
 
 async function renameLoggedFiles() {
-  if (!state.sourceDirectoryHandle) {
-    $("renameStatus").textContent = "File renaming requires direct folder access in Chrome or Edge. The selected files can still be logged to the sheet.";
-    return;
-  }
   if (!window.confirm("Rename the matching files in the selected source folder using the names in Column B?")) {
     return;
   }
   try {
     $("renameButton").disabled = true;
+    if (!state.sourceDirectoryHandle) {
+      if (!window.showDirectoryPicker) {
+        throw new Error("File renaming requires direct folder access in Chrome or Edge. The selected files can still be logged to the sheet.");
+      }
+      $("renameStatus").textContent = "Choose the source folder to enable file renaming…";
+      state.sourceDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      state.clipFiles = await collectSourceFiles(state.sourceDirectoryHandle);
+    }
     $("renameStatus").textContent = "Reading final filenames from Column B…";
     const rows = await readFinalNames(state.clipRows?.length ? state.clipRows : getClipRows());
     const results = [];
@@ -984,34 +986,12 @@ window.addEventListener("load", () => {
       $("clipSelectionStatus").textContent = "Folder selected, but its contents could not be prepared.";
     }
   });
-  $("chooseSourceButton").addEventListener("click", async () => {
-    if (!window.showDirectoryPicker || state.useFolderInputFallback) {
-      $("sourceFolderName").textContent = "Opening compatibility folder picker…";
-      // Reset before opening so re-selecting the same folder still fires change.
-      $("clipFolder").value = "";
-      $("clipFolder").click();
-      return;
-    }
-    try {
-      $("sourceFolderName").textContent = "Opening source folder picker…";
-      const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-      state.sourceDirectoryHandle = directoryHandle;
-      state.useFolderInputFallback = false;
-      state.clipFiles = await collectSourceFiles(directoryHandle);
-      $("sourceFolderName").textContent = directoryHandle.name + " selected · " + state.clipFiles.length + " file" + (state.clipFiles.length === 1 ? "" : "s") + " found.";
-      await updateClipPreview();
-    } catch (error) {
-      if (error.name === "AbortError") {
-        // Some browser contexts expose showDirectoryPicker but do not return
-        // the selected handle. Switch to the established input picker so the
-        // user can still load and log the folder's files.
-        state.useFolderInputFallback = true;
-        $("sourceFolderName").textContent = "The direct folder picker did not return access. Click Choose Source Folder again to use the standard folder picker.";
-      } else {
-        state.useFolderInputFallback = true;
-        $("sourceFolderName").textContent = "Could not open the direct folder picker: " + getErrorMessage(error) + ". Click Choose Source Folder again to use the compatibility picker.";
-      }
-    }
+  $("chooseSourceButton").addEventListener("click", () => {
+    // Use the standard folder input for asset loading. Direct folder access is
+    // requested only if the user later chooses to rename the selected files.
+    $("sourceFolderName").textContent = "Opening source folder picker…";
+    $("clipFolder").value = "";
+    $("clipFolder").click();
   });
   $("arcStart").value = "";
   $("arcStart").addEventListener("input", updateClipPreview);
