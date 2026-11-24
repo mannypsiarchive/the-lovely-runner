@@ -1,4 +1,4 @@
-const LOGGER_BUILD = "1.25";
+const LOGGER_BUILD = "1.26";
 const MAX_BATCH_FILES = 200;
 
 /*
@@ -24,6 +24,7 @@ const state = {
   clipFiles: [],
   clipRows: [],
   sourceDirectoryHandle: null,
+  useFolderInputFallback: false,
   undoSnapshot: null,
   renameRecords: [],
   manualVendors: [],
@@ -196,6 +197,25 @@ async function collectSourceFiles(directoryHandle) {
   return files;
 }
 
+async function useSelectedFolderFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) {
+    $("sourceFolderName").textContent = "No files were selected.";
+    return;
+  }
+  state.sourceDirectoryHandle = null;
+  state.clipFiles = files.map((file) => ({
+    name: file.name,
+    file,
+    relativePath: file.webkitRelativePath || file.name,
+    handle: null,
+    parentHandle: null,
+  })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  const folderName = (files[0].webkitRelativePath || "").split("/")[0] || "Selected files";
+  $("sourceFolderName").textContent = folderName + " selected · " + files.length + " file" + (files.length === 1 ? "" : "s") + " found.";
+  await updateClipPreview();
+}
+
 function sourceFileName(fileName) {
   const stem = String(fileName).replace(/\.[^.]+$/, "");
   if (/^gettyimages-/i.test(stem)) {
@@ -317,7 +337,7 @@ function isLikelyAlamyFile(fileName) {
 
 async function readAlamyMetadata(fileEntry) {
   try {
-    const file = await fileEntry.handle.getFile();
+    const file = fileEntry.file || await fileEntry.handle.getFile();
     const bytes = new Uint8Array(await file.arrayBuffer());
     const printableRuns = [];
     let run = "";
@@ -649,10 +669,12 @@ async function applyTrackerAdjustment(type) {
 
 function resetSourceFolder() {
   state.sourceDirectoryHandle = null;
+  state.useFolderInputFallback = false;
   state.clipFiles = [];
   state.clipRows = [];
   state.manualOverrides = {};
   $("sourceFolderName").textContent = "No source folder selected.";
+  $("clipFolder").value = "";
   $("sourceFolderWarning").textContent = "";
   $("sourceFolderWarning").classList.add("hidden");
   $("clipSelectionStatus").textContent = "Choose a source folder containing one or more clips.";
@@ -803,7 +825,7 @@ function finalFileName(value, originalName) {
 
 async function renameLoggedFiles() {
   if (!state.sourceDirectoryHandle) {
-    $("renameStatus").textContent = "Choose the source folder using the folder button before renaming.";
+    $("renameStatus").textContent = "File renaming requires direct folder access in Chrome or Edge. The selected files can still be logged to the sheet.";
     return;
   }
   if (!window.confirm("Rename the matching files in the selected source folder using the names in Column B?")) {
@@ -950,19 +972,35 @@ window.addEventListener("load", () => {
   });
   $("signOutButton").addEventListener("click", disconnect);
   $("resetSourceButton").addEventListener("click", resetSourceFolder);
+  $("clipFolder").addEventListener("change", async (event) => {
+    try {
+      await useSelectedFolderFiles(event.target.files);
+    } catch (error) {
+      $("sourceFolderName").textContent = "Could not read selected folder: " + getErrorMessage(error);
+      $("clipSelectionStatus").textContent = "Folder selected, but its contents could not be prepared.";
+    }
+  });
   $("chooseSourceButton").addEventListener("click", async () => {
-    if (!window.showDirectoryPicker) {
-      $("sourceFolderName").textContent = "Direct renaming requires Chrome or Edge.";
+    if (!window.showDirectoryPicker || state.useFolderInputFallback) {
+      $("sourceFolderName").textContent = "Opening compatibility folder picker…";
+      $("clipFolder").click();
       return;
     }
     try {
+      $("sourceFolderName").textContent = "Opening source folder picker…";
       const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
       state.sourceDirectoryHandle = directoryHandle;
+      state.useFolderInputFallback = false;
       state.clipFiles = await collectSourceFiles(directoryHandle);
       $("sourceFolderName").textContent = directoryHandle.name + " selected · " + state.clipFiles.length + " file" + (state.clipFiles.length === 1 ? "" : "s") + " found.";
       await updateClipPreview();
     } catch (error) {
-      if (error.name !== "AbortError") $("sourceFolderName").textContent = "Could not read source folder: " + getErrorMessage(error);
+      if (error.name === "AbortError") {
+        $("sourceFolderName").textContent = "Folder selection cancelled.";
+      } else {
+        state.useFolderInputFallback = true;
+        $("sourceFolderName").textContent = "Could not open the direct folder picker: " + getErrorMessage(error) + ". Click Choose Source Folder again to use the compatibility picker.";
+      }
     }
   });
   $("arcStart").value = "";
